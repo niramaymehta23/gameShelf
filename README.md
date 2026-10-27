@@ -28,7 +28,8 @@ on the deployed site.
 
 ## Put it online
 
-The site runs on Firebase (pay-as-you-go Blaze plan; two people playing stays inside the free quota).
+Live at **https://gameshelf-ee306.web.app** (Firebase project `gameshelf-ee306`, pay-as-you-go Blaze plan;
+two people playing stays inside the free quota).
 
 ```bash
 npx firebase login

@@ -17,7 +17,8 @@ npm run check               # syntax-check every client file
 npm test                    # = test:e2e
 npm run test:e2e            # emulators + two browser "phones" play full games of both; needs: npx playwright install chromium
 HEADED=1 npm run test:e2e   # watch it play
-npm run deploy              # hosting + firestore rules + database rules to the real project (needs firebase login)
+npm run deploy              # hosting + rules to gameshelf-ee306 → https://gameshelf-ee306.web.app (needs: npx firebase login)
+E2E_URL=https://gameshelf-ee306.web.app node tests/e2e/two-players.mjs   # same test against the live site (leaves a table; delete it)
 ```
 
 Before saying a change works: `npm run check && npm test` must both pass, and look at
