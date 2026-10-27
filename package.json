@@ -1,0 +1,23 @@
+{
+  "name": "our-game-shelf",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Two-player board games (Connect Four, Battleships) for two phones, kept in sync by a small Node server.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "check": "node --check server/index.js && node --check server/store.js && for f in public/js/*.js; do node --check \"$f\" || exit 1; done",
+    "test": "node --test tests/*.test.js",
+    "test:e2e": "node tests/e2e/two-players.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.47.0"
+  }
+}
