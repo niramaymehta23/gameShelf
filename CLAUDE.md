@@ -59,8 +59,14 @@ No bundler, no framework, no build step. Keep it that way unless there's a stron
 ## How sync works (read before touching game logic)
 
 - Two kinds of Firestore document, enforced by `firestore.rules`:
-  - `tables/{CODE}` → `{ code, created, host:{dev,name}, guest:{dev,name}|null, current: matchId|null, results: {matchId:{g,w}} }`
-  - `tables/{CODE}/matches/{id}` → `{ id, game:'c4'|'bs', by, created, rps:{r1:{host,guest},…}, moves:{m000:col,…}, shots:{s000:{r,c},…}, fleets:{host:[…]|null, guest:[…]|null} }`
+  - `tables/{CODE}` → `{ code, created, host:{dev,name}, guest:{dev,name}|null, current: matchId|null, results: {matchId:{g,w}}, saved: {c4: matchId|null, bs: …}, notice: {id, by, kind, game, match} }`
+  - `tables/{CODE}/matches/{id}` → `{ id, game:'c4'|'bs', by, created, rps:{r1:{host,guest},…}, moves:{m000:col,…}, shots:{s000:{r,c},…}, fleets:{host:[…]|null, guest:[…]|null}, joined:{host,guest}, quit:{host,guest} }`
+- **Opening, saving, quitting** (app.js, "opening, joining, saving and quitting games"): whoever opens a game
+  is in it; the other phone gets a Join / Not now sheet (`joined`, missing map = both in). Leaving a game with
+  progress offers Save and quit / Quit without saving. Either player saving keeps it in `saved[game]`; one quit
+  only pauses it (still in `saved`) and the other phone must choose Keep it saved / Quit too; both quitting
+  clears it. `notice` tells the other phone what happened (shown once per phone, except a pending quit).
+  Starting a new game of a kind replaces that kind's saved game; finishing a saved game clears it.
 - **Moves are an append-only log.** Each move is written under its own zero-padded key (`m007`,
   `s012`) with `update` (deep merge: `Net` turns nested objects into dotted field paths), so two
   phones never overwrite each other. Firestore forbids arrays inside arrays; keep data shapes flat. The board is

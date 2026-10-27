@@ -195,13 +195,15 @@ const GAMES = {
   },
   bs: {
     name: 'Battleships', cls: 'bs', art: 'art/box-bs.png',
-    rules: ['Rock, paper, scissors (best of 3) decides who fires first.', 'Hide your five ships on your chart. Your partner can’t see them.', 'Take turns firing one shot. Sink every ship to win.'],
+    rules: ['Rock, paper, scissors (best of 3) decides who fires first.', 'Hide your five ships on your chart. Your partner can’t see them.', 'Take turns firing. A hit earns you another shot.', 'Sink every ship to win.'],
   },
   gw: { name: 'Guess Who?', cls: 'gw', soon: true, art: 'art/box-gw.png' },
 };
 
 Screens.shelf = () => {
   let el, note, sheet;
+  const boxes = {};
+  const savedId = (key) => (G.table && G.table.saved && G.table.saved[key]) || null;
   const S = {
     cls: 'shelf-screen',
     mount(e) {
@@ -217,8 +219,9 @@ Screens.shelf = () => {
         const box = h('button', { class: `gbox ${g.cls}${g.soon ? ' soon' : ''}`, 'aria-label': g.name + (g.soon ? ', coming soon' : '') },
           h('img', { class: 'wc', src: g.art, alt: '' }),
           h('span', { class: 'lbl' }, g.name),
-          g.soon ? h('span', { class: 'sticker' }, 'Soon') : null);
+          g.soon ? h('span', { class: 'sticker' }, 'Soon') : h('span', { class: 'sticker saved', hidden: true }, 'Saved'));
         box.addEventListener('click', () => pick(key, box));
+        boxes[key] = box;
         cubby.append(box);
       }
       sheet = h('div', { class: 'score-grid' });
@@ -239,7 +242,7 @@ Screens.shelf = () => {
           }) }, 'Leave the table'),
         ));
     },
-    update() { paintScore(); paintNote(); },
+    update() { paintScore(); paintNote(); paintSaved(); },
     onPeers() { paintNote(); },
   };
   function paintScore() {
@@ -255,17 +258,27 @@ Screens.shelf = () => {
   }
   function paintNote() {
     const p = Live.partner();
-    note.textContent = p ? `${partnerName()}’s at the shelf too. Whoever picks a game opens it for both of you.` : `${partnerName()} isn’t here right now. Pick a game and it’ll be waiting for them.`;
+    note.textContent = p ? `${partnerName()}’s at the shelf too. Whoever picks a game asks the other to join.` : `${partnerName()} isn’t here right now. Pick a game and they’ll be asked to join when they’re back.`;
+  }
+  function paintSaved() {
+    for (const key in boxes) { const s = boxes[key].querySelector('.sticker.saved'); if (s) s.hidden = !savedId(key); }
   }
   function pick(key, box) {
     const g = GAMES[key];
     Sound.tap(); vibrate(8);
     if (g.soon) { box.classList.add('pulled'); setTimeout(() => box.classList.remove('pulled'), 400); toast('Guess Who? is still on order'); return; }
     box.classList.add('pulled');
-    const body = h('div', { class: 'sheet-body' }, h('ul', null, ...g.rules.map((r) => h('li', null, r))));
+    const saved = savedId(key);
+    const body = h('div', { class: 'sheet-body' },
+      saved ? h('p', { style: 'margin:0 0 8px' }, `You have a saved game. Carry on where you left off, or start a new one (the saved game is thrown away).`) : null,
+      h('ul', null, ...g.rules.map((r) => h('li', null, r))));
     openSheet({
       title: g.name, body,
-      actions: [{ label: `Play ${g.name}`, kind: 'primary', onClick: () => { Sound.pick(); startMatch(key); } }, { label: 'Put it back', kind: 'ghost' }],
+      actions: saved
+        ? [{ label: 'Carry on the saved game', kind: 'primary', onClick: () => { Sound.pick(); resumeMatch(saved); } },
+          { label: 'Start a new game', kind: 'ink', onClick: () => { Sound.pick(); startMatch(key); } },
+          { label: 'Put it back', kind: 'ghost' }]
+        : [{ label: `Play ${g.name}`, kind: 'primary', onClick: () => { Sound.pick(); startMatch(key); } }, { label: 'Put it back', kind: 'ghost' }],
     });
     setTimeout(() => box.classList.remove('pulled'), 700);
   }
@@ -274,7 +287,7 @@ Screens.shelf = () => {
 
 // ---------------- match shell ----------------
 Screens.match = () => {
-  let el, phaseEl, phase = null, phaseName = null, introDone = false, announced = false;
+  let el, phaseEl, phase = null, phaseName = null, introDone = false;
   const S = {
     cls: 'match',
     mount(e) {
@@ -288,7 +301,7 @@ Screens.match = () => {
       phaseEl = h('div', { class: 'phase' });
       el.append(phaseEl);
       Wake.on();
-      if (m.by && m.by !== G.seat && !announced) { announced = true; toast(`${partnerName()} opened ${GAMES[m.game].name}`); }
+      if (!joinedBy(m, other(G.seat))) toast(`Waiting for ${partnerName()} to join…`, 3200);
     },
     update() {
       const m = G.match; if (!m) return;
@@ -316,11 +329,15 @@ Screens.match = () => {
     Sound.tap();
     const m = G.match;
     const over = phase && phase.isOver && phase.isOver();
-    if (over) { backToShelf(); return; }
+    if (over || !hasProgress(m)) { backToShelf(); return; } // nothing to save yet
     openSheet({
-      title: 'Put this game away?',
-      body: `It ends the game for ${partnerName()} too.`,
-      actions: [{ label: 'Back to the shelf', kind: 'ink', onClick: backToShelf }, { label: 'Keep playing', kind: 'ghost' }],
+      title: 'Leave this game?',
+      body: `Save it to finish another time, or quit. Either way it stops for ${partnerName()} too, and they’ll see what you chose.`,
+      actions: [
+        { label: 'Save and quit', kind: 'primary', onClick: () => saveAndQuit(m) },
+        { label: 'Quit without saving', kind: 'ink', onClick: () => quitGame(m) },
+        { label: 'Keep playing', kind: 'ghost' },
+      ],
     });
   }
   return S;

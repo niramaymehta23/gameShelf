@@ -48,12 +48,14 @@ function onTableSnap(s) {
   if (G.seat && prev) {
     const p = other(G.seat);
     if (!prev[p] && G.table[p]) { toast(`${G.table[p].name} sat down at the table`); Sound.ding(); }
-    if (prev.current && !G.table.current && !G.leftByMe) toast(`${partnerName()} went back to the shelf`);
+    const fresh = G.table.notice && (!prev.notice || prev.notice.id !== G.table.notice.id);
+    if (prev.current && !G.table.current && !G.leftByMe && !fresh) toast(`${partnerName()} went back to the shelf`);
   }
   G.leftByMe = false;
   const cur = G.table.current || null;
   if (cur !== G.matchId) watchMatch(cur);
   route();
+  showNotice();
 }
 function resolveSeat() {
   const t = G.table, d = G.dev;
@@ -74,18 +76,112 @@ function watchMatch(id) {
   if (!id) return;
   G.unsubMatch = Net.doc(`tables/${G.code}/matches/${id}`).onSnapshot((s) => {
     if (G.matchId !== id) return;
+    const prev = G.match;
     G.match = s.exists ? s.data() : null;
+    if (prev && G.match && G.seat && !joinedBy(prev, other(G.seat)) && joinedBy(G.match, other(G.seat))) { toast(`${partnerName()} joined`); Sound.ding(); }
     route();
   }, (e) => console.warn('match listener', e));
 }
+// ---------- opening, joining, saving and quitting games ----------
+// table.saved  {c4: matchId|null, bs: …}  the game of each kind you can carry on later
+// table.notice {id, by, kind, game, match} what one of you just did, for the other phone to show:
+//   'saved' saved and quit · 'quit' quit without saving (the other decides: keep it saved, or quit too)
+//   'discarded' both quit, so it's gone · 'declined' said "not now" to a game the other opened
+// match.joined {host, guest}  who is in; whoever opens a game is, the other phone is asked to join
+// match.quit   {host, guest}  who chose to quit without saving
+const joinedBy = (m, seat) => !m.joined || m.joined[seat] !== false; // older matches have no joined map: both are in
+const hasProgress = (m) => !!m && (['rps', 'moves', 'shots'].some((k) => Object.keys(m[k] || {}).length > 0) || !!(m.fleets && (m.fleets.host || m.fleets.guest)));
+const matchPath = (id) => `tables/${G.code}/matches/${id}`;
+const notice = (kind, m) => ({ id: Date.now().toString(36) + rid().slice(0, 4), by: G.seat, kind, game: m.game, match: m.id });
+
 async function startMatch(game) {
   const id = Date.now().toString(36) + rid().slice(0, 4);
-  const ok = await write(`tables/${G.code}/matches/${id}`, { id, game, created: Date.now(), by: G.seat, rps: {}, moves: {}, shots: {}, fleets: {} }, { set: true });
+  const ok = await write(matchPath(id), { id, game, created: Date.now(), by: G.seat, rps: {}, moves: {}, shots: {}, fleets: {}, joined: { [G.seat]: true, [other(G.seat)]: false }, quit: {} }, { set: true });
+  // a new game takes the place of a saved one of the same kind
+  if (ok) await write('tables/' + G.code, { current: id, saved: { [game]: null } });
+}
+async function resumeMatch(id) {
+  const ok = await write(matchPath(id), { joined: { [G.seat]: true, [other(G.seat)]: false }, quit: {} });
   if (ok) await write('tables/' + G.code, { current: id });
+}
+async function joinMatch(m) { await write(matchPath(m.id), { joined: { [G.seat]: true } }); }
+async function declineMatch(m) {
+  G.leftByMe = true;
+  await write('tables/' + G.code, { current: null, notice: notice('declined', m) });
+}
+async function saveAndQuit(m) {
+  G.leftByMe = true;
+  await write(matchPath(m.id), { quit: {} });
+  if (await write('tables/' + G.code, { current: null, saved: { [m.game]: m.id }, notice: notice('saved', m) })) toast('Saved. It’s on the shelf for next time.');
+}
+async function quitGame(m) {
+  G.leftByMe = true;
+  const both = !!(m.quit && m.quit[other(G.seat)]);
+  await write(matchPath(m.id), { quit: { [G.seat]: true } });
+  // one quit only pauses the game: it stays saved until the other one quits too
+  const ok = await write('tables/' + G.code, both
+    ? { current: null, saved: { [m.game]: null }, notice: notice('discarded', m) }
+    : { current: null, saved: { [m.game]: m.id }, notice: notice('quit', m) });
+  if (ok) toast(both ? 'Game put away without saving.' : `You quit. ${partnerName()} can still keep it saved.`, 3200);
 }
 async function rematch(fromId, game) {
   if (!G.table || G.table.current !== fromId) return;
   await startMatch(game);
+}
+
+// The other phone's notices. A quit asks for a decision and stays up until it's answered;
+// the rest are shown once per phone.
+let noticeSheet = null;
+function showNotice() {
+  const n = G.table && G.table.notice;
+  if (!n || !G.seat || n.by === G.seat || !GAMES[n.game]) return;
+  const P = partnerName(), g = GAMES[n.game].name;
+  if (n.kind === 'quit') {
+    const open = !G.table.current && G.table.saved && G.table.saved[n.game] === n.match;
+    if (!open || (noticeSheet === n.id && !$('#sheet').hidden)) return;
+    noticeSheet = n.id;
+    const decide = async (fn) => { const s = await Net.doc(matchPath(n.match)).get().catch(() => null); if (s && s.exists) fn(s.data()); };
+    openSheet({
+      title: `${P} quit ${g}`,
+      body: 'The game is paused where you left it. Keep it saved to finish another time, or quit too and it’s gone.',
+      dismissible: false,
+      actions: [
+        { label: 'Keep it saved', kind: 'primary', onClick: () => decide(saveAndQuit) },
+        { label: 'Quit too', kind: 'ink', onClick: () => decide(quitGame) },
+      ],
+    });
+    return;
+  }
+  if (Pref.get('notice') === n.id) return;
+  Pref.set('notice', n.id);
+  const text = {
+    saved: [`${P} saved ${g}`, `${P} went back to the shelf. Pick ${g} to carry on where you left off.`],
+    discarded: [`${P} quit too`, `${g} has been put away without saving.`],
+    declined: [`${P} can’t play right now`, `${P} said not now to ${g}.`],
+  }[n.kind];
+  if (text) { Sound.ding(); openSheet({ title: text[0], body: text[1], actions: [{ label: 'OK', kind: 'ghost' }] }); }
+}
+
+// Asked to join a game the other phone opened (or a saved one they want to carry on).
+let inviteFor = null, inviteTok = 0;
+function syncInvite() {
+  const m = G.match;
+  const want = (G.seat && G.table && m && G.table.current === m.id && !joinedBy(m, G.seat)) ? m.id : null;
+  if (want === inviteFor) return;
+  if (inviteFor && !want) closeSheet(inviteTok);
+  inviteFor = want;
+  if (!want) return;
+  const P = partnerName(), g = GAMES[m.game].name, saved = hasProgress(m);
+  Sound.ding();
+  inviteTok = openSheet({
+    title: saved ? `${P} wants to carry on ${g}` : `${P} opened ${g}`,
+    body: saved ? 'Your saved game is ready where you left it.' : 'Join them for a new game?',
+    dismissible: false,
+    actions: [
+      { label: saved ? 'Carry on' : 'Join', kind: 'primary', onClick: () => joinMatch(m) },
+      { label: 'Not now', kind: 'ghost', onClick: () => declineMatch(m) },
+    ],
+  });
 }
 async function backToShelf() {
   G.leftByMe = true;
@@ -93,7 +189,8 @@ async function backToShelf() {
 }
 function recordResult(m, w) {
   if (!G.table || (G.table.results && G.table.results[m.id])) return;
-  write('tables/' + G.code, { results: { [m.id]: { g: m.game, w } } });
+  const finishedSaved = G.table.saved && G.table.saved[m.game] === m.id;
+  write('tables/' + G.code, { results: { [m.id]: { g: m.game, w } }, ...(finishedSaved ? { saved: { [m.game]: null } } : {}) });
 }
 
 // ---------- toast + sheet ----------
@@ -147,9 +244,11 @@ function route() {
   else if (!G.table.guest || !G.table.host) name = 'waiting';
   else if (!G.table.current) name = 'shelf';
   else if (!G.match || G.match.id !== G.table.current) name = 'loading';
+  else if (!joinedBy(G.match, G.seat)) name = 'shelf';
   else name = 'match:' + G.match.id;
   show(name);
   updateBar();
+  syncInvite();
 }
 function show(name) {
   if (cur.name === name) { cur.obj.update && cur.obj.update(); return; }

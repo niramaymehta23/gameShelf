@@ -95,18 +95,19 @@ try {
   const code = (await a.locator('.code-card .rack .tile').allInnerTexts()).map((t) => t.trim()[0]).join('');
   check(/^[A-Z]{4}$/.test(code), `table code ${code}`);
   await snap(a, '01-waiting');
-  await b.fill('#nameInput', 'Priya');
+  await b.fill('#nameInput', 'Saharsh');
   await b.getByRole('button', { name: 'Join with a code' }).click();
   await b.locator('#codeInput').pressSequentially(code);
   await a.locator('.gbox').first().waitFor({ timeout: 8000 });
   await b.locator('.gbox').first().waitFor({ timeout: 8000 });
   await sleep(600);
-  check((await a.locator('#partnerName').innerText()).includes('Priya is here'), 'host sees the partner online');
+  check((await a.locator('#partnerName').innerText()).includes('Saharsh is here'), 'host sees the partner online');
   await snap(b, '02-shelf');
 
   console.log('Connect Four');
   await a.locator('.gbox.c4').click();
   await a.getByRole('button', { name: 'Play Connect Four' }).click();
+  await b.locator('#sheet').getByRole('button', { name: 'Join' }).click();
   await a.locator('.choices').waitFor(); await b.locator('.choices').waitFor();
   await sleep(500);
   await a.locator('.choices .hand', { hasText: 'Rock' }).click();
@@ -145,6 +146,9 @@ try {
   console.log('Battleships');
   await b.locator('.gbox.bs').click();
   await b.getByRole('button', { name: 'Play Battleships' }).click();
+  await snap(a, '05-invite');
+  check((await a.locator('#sheet').innerText()).includes('Saharsh opened Battleships'), 'partner is asked to join');
+  await a.locator('#sheet').getByRole('button', { name: 'Join' }).click();
   await a.locator('.choices').waitFor(); await b.locator('.choices').waitFor();
   await sleep(500);
   await rpsRound(a, b, 'Scissors', 'Rock');
@@ -192,6 +196,49 @@ try {
   check((await a.locator('#sheet').innerText()).includes('sank your whole fleet'), 'loser sees the defeat card');
   const hits = await state(a, 'bsState(G.match).hits');
   check(hits[seatB] === 17, '17 hits recorded');
+
+  console.log('Saving and quitting');
+  const sheetBtn = (p, name) => p.locator('#sheet').getByRole('button', { name, exact: true }).click();
+  const sheetHas = (p, text) => p.locator('#sheet .panel', { hasText: text }).waitFor({ timeout: 8000 }).then(() => true, () => false);
+  await sheetBtn(a, 'Back to the shelf');
+  await a.locator('.gbox').first().waitFor({ timeout: 8000 }); await b.locator('.gbox').first().waitFor({ timeout: 8000 });
+  await sleep(800);
+  await a.locator('.gbox.c4').click(); await sheetBtn(a, 'Play Connect Four');
+  await sheetBtn(b, 'Join');
+  await a.locator('.choices').waitFor(); await b.locator('.choices').waitFor();
+  await sleep(500);
+  await a.locator('.choices .hand', { hasText: 'Rock' }).click();
+  await sleep(600);
+  const savedId = await state(a, 'G.match.id');
+  // A quits; B is stopped and asked to decide, and keeps it
+  await a.locator('.pill-back').click();
+  await snap(a, '08-leave-sheet');
+  await sheetBtn(a, 'Quit without saving');
+  check(await sheetHas(b, 'Niramay quit Connect Four'), 'partner is told the other quit');
+  check(await state(b, '!G.table.current'), 'partner can no longer play on');
+  await snap(b, '09-partner-quit');
+  await sheetBtn(b, 'Keep it saved');
+  check(await sheetHas(a, 'Saharsh saved Connect Four'), 'quitter hears the partner kept it');
+  await sheetBtn(a, 'OK');
+  await sleep(600);
+  check(await state(a, `G.table.saved.c4 === '${savedId}'`), 'the game is saved');
+  check(await a.locator('.gbox.c4 .sticker.saved').isVisible() && await b.locator('.gbox.c4 .sticker.saved').isVisible(), 'both shelves show it as saved');
+  await snap(b, '10-shelf-saved');
+  // A carries on the saved game; B is asked and joins; the RPS pick is still there
+  await a.locator('.gbox.c4').click(); await sheetBtn(a, 'Carry on the saved game');
+  check(await sheetHas(b, 'Niramay wants to carry on Connect Four'), 'partner is asked to carry on');
+  await sheetBtn(b, 'Carry on');
+  await a.locator('.choices').waitFor(); await b.locator('.choices').waitFor();
+  check(await state(b, `G.match.id === '${savedId}' && !!G.match.rps.r1.host`), 'saved game picks up where it left off');
+  // B quits, A quits too: gone
+  await b.locator('.pill-back').click(); await sheetBtn(b, 'Quit without saving');
+  check(await sheetHas(a, 'Saharsh quit Connect Four'), 'other way round: told about the quit');
+  await sheetBtn(a, 'Quit too');
+  check(await sheetHas(b, 'Niramay quit too'), 'both quit: told it was put away');
+  await sheetBtn(b, 'OK');
+  await sleep(600);
+  check(await state(a, '!G.table.saved.c4'), 'nothing saved after both quit');
+  check(!(await a.locator('.gbox.c4 .sticker.saved').isVisible()), 'saved sticker is gone');
 
   console.log('Recovery');
   await a.reload();
