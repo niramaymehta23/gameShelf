@@ -3,6 +3,7 @@ data/
 tests/e2e/screens/
 .DS_Store
 .env
+public/js/firebase-config.js
 *.log
 .firebase/
 *-debug.log

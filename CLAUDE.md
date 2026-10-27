@@ -34,13 +34,14 @@ whenever the page is on localhost or a private LAN address, and `FIREBASE_CONFIG
 
 ```
 firebase.json          Hosting, rules files, emulator ports.
+tools/firebase-config.mjs  Writes public/js/firebase-config.js before deploy (stub locally). Keep keys out of git.
 firestore.rules        Who may read/write tables and matches (paths only; same trust model as before).
 database.rules.json    Realtime Database rules for presence/{CODE}/{id}.
 public/index.html      Shell + script order (Firebase compat SDK from gstatic, pinned, first).
 public/css/app.css     All styles. Design tokens in the first :root block.
 public/js/             Classic scripts sharing globals, loaded IN THIS ORDER:
+  firebase-config.js   GENERATED + git-ignored (tools/firebase-config.mjs): FIREBASE_CONFIG, FIREBASE_APPCHECK_KEY
   util.js              h() DOM helper, sleep/settle, icons, Sound (WebAudio synth, no files)
-  firebase-config.js   FIREBASE_CONFIG for the deployed project
   net.js               FB (Firebase init), Pref (localStorage), Net (Firestore document API), Live (RTDB presence)
   app.js               G (app state), write(), table/match lifecycle, toast, sheet, router, top bar
   lobby.js             Screens: landing, seat, waiting, shelf, match shell; GAMES registry; end sheet

@@ -1,6 +1,7 @@
 {
   "hosting": {
     "public": "public",
+    "predeploy": ["node tools/firebase-config.mjs"],
     "cleanUrls": true,
     "rewrites": [{ "source": "**", "destination": "/index.html" }],
     "headers": [

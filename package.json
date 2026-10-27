@@ -7,10 +7,10 @@
     "node": ">=20"
   },
   "scripts": {
-    "start": "firebase emulators:start --project demo-gameshelf",
+    "start": "node tools/firebase-config.mjs --stub && firebase emulators:start --project demo-gameshelf",
     "check": "for f in public/js/*.js; do node --check \"$f\" || exit 1; done",
     "test": "npm run test:e2e",
-    "test:e2e": "firebase emulators:exec --project demo-gameshelf \"node tests/e2e/two-players.mjs\"",
+    "test:e2e": "node tools/firebase-config.mjs --stub && firebase emulators:exec --project demo-gameshelf \"node tests/e2e/two-players.mjs\"",
     "deploy": "firebase deploy --only hosting,firestore:rules,database"
   },
   "devDependencies": {

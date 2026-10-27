@@ -3,7 +3,8 @@
    net.js — everything that talks to Firebase.
 
    FB    the Firebase app: Firestore (fs) for documents, Realtime Database (db) for presence.
-         On localhost or a LAN address it talks to the local emulators (npm start).
+         On localhost or a LAN address it talks to the local emulators (npm start); otherwise it
+         uses FIREBASE_CONFIG and App Check from the generated firebase-config.js.
    Pref  per-device settings in localStorage (device id, name, last table, sound).
    Net   documents. Net.doc(path) gives get / set / update / delete / onSnapshot, the same
          shape the game code was written against. update deep-merges, like before.
@@ -21,6 +22,8 @@ const FB = (() => {
     ? { apiKey: 'demo', projectId: 'demo-gameshelf', databaseURL: 'https://demo-gameshelf.firebaseio.com' }
     : FIREBASE_CONFIG;
   firebase.initializeApp(cfg);
+  // App Check: Firestore and the Realtime Database only answer requests that carry a reCAPTCHA-backed token from this site
+  if (!EMULATED && FIREBASE_APPCHECK_KEY) firebase.appCheck().activate(new firebase.appCheck.ReCaptchaEnterpriseProvider(FIREBASE_APPCHECK_KEY), true);
   const fs = firebase.firestore(), db = firebase.database();
   if (EMULATED) { fs.useEmulator(location.hostname, 8080); db.useEmulator(location.hostname, 9000); }
   return { fs, db };
