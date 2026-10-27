@@ -127,16 +127,21 @@ Regenerating art: `python3 tools/paint_art.py` (numpy, scipy, Pillow) writes to 
   House rule `HIT_AGAIN`: a hit earns another shot, so the same player can fire many times in a row
   (the e2e `shoot()` waits for "Tap a square" in the status, not just the button text). Hits are
   burning pegs (CSS flame + smoke), misses are white flags (inline SVG, cloth waves via SMIL).
-- `hues.js` (Hues, house rules from Niramay's spec, our own deck and card names): 101 cards, per
-  colour (lavender, orange, navy, sage) 1–9 twice, 3 Again (go again), 2 Splash (+2); then 4 Blend
-  (wild), 4 Flood (+4, wild), 1 Trade (swap hands, wild). Deal 7; the pile starts on a number.
+- `hues.js` (Hues, house rules from Niramay's spec, our own deck and card names): 95 cards, per
+  colour (lavender, orange, navy, sage) 1–9 twice, 2 Again (go again), 2 Splash (+2); then 4 Blend
+  (wild), 2 Flood (+4, wild), 1 Trade (swap hands, wild). Deal 7, at most 2 action cards per opening
+  hand (Niramay found more unbalanced); the pile starts on a number. The shuffle is uniform (checked
+  with chi-square), so balance changes belong in the deck mix or the deal, not the RNG.
   Both phones shuffle the same deck from `match.seed` (`hueRng`), and reshuffle the pile the same way
-  when the deck runs out. `plays` keys are four digits (`p0042`) because games can pass 999 moves.
-  A move whose `by` isn't the player to move, or that doesn't fit (`hueFits`), is skipped by the
-  replay, so a stale tap can never corrupt the game. Penalties stack without limit (+2 on +2, +4 on
-  +4, +2 on a +4 only in its named colour, never +4 on +2); whoever takes them still plays their turn.
-  Winning waits for the chain, and for the turn owed after taking one (`grace`). Input is gated on
-  `animating`. Cards are HTML on painted panels (`art/hue-*.png`); the e2e drags the first card.
+  when the deck runs out. `plays` keys are four digits plus the seat (`p0042h`): games pass 999
+  moves, and Hues!/Call out can be sent by either phone at the same moment as the other's move.
+  Moves that don't count (wrong seat, card doesn't fit `hueFitsAll`) are skipped by the replay.
+  Same-number cards can go down together (`ids`, last one sets the colour). Penalties stack without
+  limit (+2 on +2, a Flood on anything, +2 on a Flood only in its named colour); whoever takes them
+  then plays or passes (`paid`). One card left without calling Hues (`owes`) can be called out until
+  that player's next turn: +2 cards. Winning waits for the chain, and for the turn owed after taking
+  one (`grace`). Unplayable cards are NOT dimmed (Niramay's call): a wrong card is refused with a
+  note. Input is gated on `animating`. Cards are HTML on painted panels (`art/hue-*.png`).
 - The status line has a fixed height so taps on the chart don't land on the wrong square when the
   text wraps. Keep `.status-line { min-height }`.
 - iOS: no `navigator.vibrate`; WebAudio only starts after a tap (handled in `Sound.ensure`);

@@ -270,29 +270,50 @@ try {
   const hands = (p) => state(p, 'JSON.stringify(huState(G.match).hands)');
   check(await hands(a) === await hands(b), 'both phones deal the same hands from the seed');
   await snap(a, '14-hu-start');
-  // play like a person: a card that fits (wilds last), the drawn card if it fits, else draw (or pick up a chain)
-  let huMoves = 0, dragged = false, pickedColour = false;
+  // play like a person: a card that fits (wilds last, with any others of the same number), the drawn card
+  // if it fits, else draw / pick up / pass. Call Hues on one card, except once, so the other phone calls it out.
+  let huMoves = 0, dragged = false, pickedColour = false, forgot = false, multi = false, callouts = 0, hues = 0;
+  const logLen = (p) => state(p, 'huState(G.match).log.length');
+  const waitLog = (p, n) => p.waitForFunction((n) => huState(G.match).log.length > n, n, { timeout: 10000 });
   async function huMove(p) {
     const plan = await p.evaluate(() => {
-      const s = huState(G.match);
-      const fit = s.hands[G.seat].filter((id) => hueFits(s, HUE_DECK[id])).sort((x, y) => !!HUE_KIND[HUE_DECK[x].k].wild - !!HUE_KIND[HUE_DECK[y].k].wild);
-      const id = s.drawn != null ? s.drawn : fit[0];
-      return id == null ? null : { id, wild: !!HUE_KIND[HUE_DECK[id].k].wild };
+      const s = huState(G.match), hand = s.hands[G.seat];
+      if (s.owes[other(G.seat)] && s.hands[other(G.seat)].length === 1) return { callout: true };
+      const fit = hand.filter((id) => hueFits(s, HUE_DECK[id])).sort((x, y) => !!HUE_KIND[HUE_DECK[x].k].wild - !!HUE_KIND[HUE_DECK[y].k].wild);
+      const first = s.drawn != null ? s.drawn : fit[0];
+      if (first == null) return { ids: null };
+      const c = HUE_DECK[first];
+      const ids = [first, ...(!s.penalty && s.drawn == null && c.k === 'n' ? hand.filter((id) => id !== first && HUE_DECK[id].k === 'n' && HUE_DECK[id].v === c.v) : [])];
+      return { ids, wild: !!HUE_KIND[HUE_DECK[ids[ids.length - 1]].k].wild };
     });
-    const n = await state(p, 'Object.keys(G.match.plays).length');
-    if (!plan) await p.locator('.hu-act').click();
+    let n = await logLen(p);
+    if (plan.callout) {
+      const victim = p === a ? b : a;
+      const before = await state(victim, 'huState(G.match).hands[G.seat].length');
+      await p.locator('.hu-btns .hu-call', { hasText: 'Call out' }).click();
+      await waitLog(p, n);
+      await sleep(900);
+      callouts++;
+      if (callouts === 1) { await snap(victim, '16-hu-called-out'); check(await state(victim, 'huState(G.match).hands[G.seat].length') === before + 2, 'Call out: caught on one card without Hues, picks up 2'); }
+      return;
+    }
+    if (!plan.ids) await p.locator('.hu-act').click();
     else {
-      const card = p.locator(`.hu-hand .hcard[data-id="${plan.id}"]`);
+      const card = (id) => p.locator(`.hu-hand .hcard[data-id="${id}"]`);
       if (!dragged) {
         // the first card goes by dragging it onto the pile
-        const cb = await card.boundingBox(), pb = await p.locator('.hu-pile').boundingBox();
+        const cb = await card(plan.ids[0]).boundingBox(), pb = await p.locator('.hu-pile').boundingBox();
         await p.mouse.move(cb.x + 12, cb.y + 20); await p.mouse.down();
         for (let i = 1; i <= 8; i++) await p.mouse.move(cb.x + 12 + (pb.x + 20 - cb.x - 12) * i / 8, cb.y + 20 + (pb.y + 30 - cb.y - 20) * i / 8);
         await p.mouse.up();
         dragged = true;
+      } else if (plan.ids.length > 1) {
+        for (const id of plan.ids) await card(id).click({ position: { x: 12, y: 18 } });
+        if (!multi) await snap(p, '15-hu-pair');
+        await p.locator('.hu-pile').click();
       } else {
-        await card.click({ position: { x: 12, y: 18 } });
-        await p.locator(`.hu-hand .hcard.sel[data-id="${plan.id}"]`).click({ position: { x: 12, y: 18 } });
+        await card(plan.ids[0]).click({ position: { x: 12, y: 18 } });
+        await p.locator(`.hu-hand .hcard.sel[data-id="${plan.ids[0]}"]`).click({ position: { x: 12, y: 18 } });
       }
       if (plan.wild) {
         await p.locator('#sheet .hue-pot').first().waitFor();
@@ -300,8 +321,17 @@ try {
         await p.locator('#sheet .hue-pot').nth(huMoves % 4).click();
       }
     }
-    await p.waitForFunction((n) => Object.keys(G.match.plays).length > n, n, { timeout: 10000 });
+    await waitLog(p, n);
     huMoves++;
+    const last = await state(p, 'huState(G.match).log.at(-1)');
+    if (last.k === 'play' && last.ids.length > 1 && !multi) { multi = true; check(true, `played ${last.ids.length} cards of the same number together`); }
+    if (await state(p, 'huState(G.match).owes[G.seat]')) {
+      if (!forgot) { forgot = true; return; } // leave it for the other phone to call out
+      n = await logLen(p);
+      await p.locator('.hu-btns .hu-call', { hasText: 'Hues!' }).click();
+      await waitLog(p, n);
+      hues++;
+    }
   }
   const huReady = (p) => state(p, 'document.querySelector(".hu")?.dataset.ready === "1"');
   for (let t = Date.now(); Date.now() - t < 240000;) {
@@ -315,6 +345,8 @@ try {
   await sleep(2600);
   const huWinner = await state(a, 'huState(G.match).winner');
   check(!!huWinner && huWinner === await state(b, 'huState(G.match).winner'), `a winner both phones agree on, after ${huMoves} moves`);
+  console.log(`       (${hues} Hues called, ${callouts} called out, pairs played: ${multi})`);
+  check(await state(a, 'huState(G.match).log.every((e) => e.k !== "callout" || e.ids.length === 2)'), 'every call-out cost two cards');
   const [huW, huL] = huWinner === await state(a, 'G.seat') ? [a, b] : [b, a];
   await snap(huW, '17-hu-end');
   check((await huW.locator('#sheet').innerText()).includes('You win'), 'winner sees the win card');

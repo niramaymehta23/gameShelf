@@ -210,9 +210,10 @@ const GAMES = {
     name: 'Hues', cls: 'hu', art: 'art/box-hu.png',
     howTo: [
       { t: 'Who goes first', d: 'Rock, paper, scissors, best of three. The winner plays the first card. You each get seven.', art: 'art/rps-rock.png' },
-      { t: 'Match the pile', d: 'Play a card in the colour on the pile, or with the same number or symbol. Drag it onto the pile, or tap it twice.', art: 'art/hue-orange.png' },
+      { t: 'Match the pile', d: 'Play a card in the colour on the pile, or with the same number or symbol. Drag it onto the pile, or tap it twice. Got two of the same number? Tap both, then the pile, to put them down together.', art: 'art/hue-orange.png' },
       { t: 'Stuck?', d: 'Draw a card. If it fits you can play it straight away; if not, keep it and it’s your partner’s turn.' },
-      { t: 'The specials', d: 'Again: go again. Blend: pick the colour. Trade: swap hands, then pick the colour. Splash +2 and Flood +4 (pick the colour) stack: +2 on +2, +4 on +4, or a +2 in the colour a +4 picked. Whoever can’t stack picks up the lot, then still takes their turn.', art: 'art/hue-wild.png' },
+      { t: 'The specials', d: 'Again: go again. Blend: pick the colour. Trade: swap hands, then pick the colour. Splash +2 and Flood +4 (pick the colour) stack: +2 on +2, a Flood on anything, or a +2 in the colour a Flood picked. Whoever can’t stack picks up the lot, then plays or passes.', art: 'art/hue-wild.png' },
+      { t: 'Hues!', d: 'Down to one card? Tap Hues! on that turn. Forget, and your partner can tap Call out before their turn ends: you pick up two.' },
       { t: 'Empty your hand to win', d: 'If your last card starts a +2 or +4 chain, it has to finish first, and your partner still gets the turn they’re owed.' },
     ],
   },
