@@ -75,7 +75,7 @@ const Net = {
   // Firestore holds writes made offline until it reconnects; give up waiting after 15 s like before
   timed(p) {
     let t;
-    const late = new Promise((_, reject) => { t = setTimeout(() => reject({ code: 'unavailable', message: 'no answer from the server' }), 15000); });
+    const late = new Promise((_, reject) => { t = setTimeout(() => reject({ code: 'unavailable', message: 'no answer from Firebase' }), 15000); });
     return Promise.race([p, late]).finally(() => clearTimeout(t));
   },
   snap(path, s) {
@@ -114,7 +114,7 @@ const Net = {
 };
 
 // ---------- presence: who is at the table right now ----------
-// presence/{CODE}/{pushId} = {pres, at}; the server removes it when this phone disconnects
+// presence/{CODE}/{pushId} = {pres, at}; Firebase removes it when this phone disconnects
 const Live = {
   code: null, pres: {}, peers: [], listeners: new Set(),
   ref: null, off: null,

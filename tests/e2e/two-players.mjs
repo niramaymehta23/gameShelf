@@ -126,7 +126,7 @@ try {
       await b.waitForFunction(() => !Net.online, null, { timeout: 5000 });
       await b.evaluate(async () => { FB.db.goOnline(); await FB.fs.enableNetwork(); });
       await b.waitForFunction(() => Net.online, null, { timeout: 10000 });
-      check(true, 'B reconnected after its socket dropped');
+      check(true, 'B reconnected after its connection dropped');
     }
   }
   await sleep(2200);

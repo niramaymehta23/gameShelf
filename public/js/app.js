@@ -16,7 +16,6 @@ async function write(path, patch, { set = false } = {}) {
   } catch (e) {
     console.warn('write failed', path, e);
     if (e && e.code === 'unavailable') toast('Couldn’t reach the table. Check your connection and try again.');
-    else if (e && e.code === 'rate_limited') toast('Too fast! Try that again.');
     else toast('Couldn’t save that. Try again.');
     return false;
   }

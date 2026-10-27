@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "private": true,
   "description": "Two-player board games (Connect Four, Battleships) for two phones, kept in sync by Firebase.",
-  "type": "module",
   "engines": {
     "node": ">=20"
   },

@@ -196,7 +196,7 @@ function makeC4(box, ctx) {
   return {
     update(nm) {
       m = nm; st = c4State(m);
-      // our own disc has reached the server: we may aim again as soon as it's our turn, even mid-animation
+      // our own disc is in the log: we may aim again as soon as it's our turn, even mid-animation
       if (pending && st.moves.length > pendingN) pending = false;
       if (cell == null) layout();
       if (rendered < 0) {

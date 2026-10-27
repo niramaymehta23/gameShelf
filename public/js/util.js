@@ -36,13 +36,6 @@ function settle(anim) {
 }
 const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
-function merge(a, b) {
-  for (const k of Object.keys(b)) {
-    if (isObj(b[k]) && isObj(a[k])) merge(a[k], b[k]);
-    else a[k] = clone(b[k]);
-  }
-  return a;
-}
 const other = (s) => (s === 'host' ? 'guest' : 'host');
 const pad3 = (n) => String(n).padStart(3, '0');
 const rid = () => Math.random().toString(36).slice(2, 10);
