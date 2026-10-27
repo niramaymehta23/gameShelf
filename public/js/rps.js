@@ -32,7 +32,7 @@ function handFace(choice, tag = 'div') {
 function handBack(chosen) {
   return h('div', { class: 'hand back', 'aria-label': chosen ? 'Chosen' : 'Choosing' },
     h('b', null, chosen ? '✓' : '?'),
-    h('small', null, chosen ? 'Chosen' : 'Choosing…'));
+    h('small', null, chosen ? 'Chosen' : h('span', { class: 'ticking' }, 'Choosing', h('i', null, '.'), h('i', null, '.'), h('i', null, '.'))));
 }
 
 function makeRPS(box, ctx) {
@@ -93,12 +93,13 @@ function makeRPS(box, ctx) {
     const mine = st.cur[seat] || localPick;
     const theirs = st.cur[opp];
     setTop(handBack(!!theirs), theirs ? 'back-y' : 'back-n');
+    // once you've picked, their face-down card bobs and its dots tick: that's the "waiting for them" signal
+    topCard.classList.toggle('waiting', !!mine && !theirs);
     if (mine) setBot(handFace(mine), 'face-' + mine, true); else setBot(null, '');
     choices.classList.toggle('locked', !!mine);
     for (const c in choiceBtns) choiceBtns[c].classList.toggle('picked', c === mine);
     choices.style.opacity = '';
-    hint.textContent = mine
-      ? (theirs ? 'Revealing…' : `Waiting for ${P} to choose…`)
+    hint.textContent = mine ? ''
       : (theirs ? `${P} has chosen. Your pick stays hidden until you both choose.` : 'Pick one. Nobody sees it until you’ve both chosen.');
   }
   function pick(c) {

@@ -282,8 +282,8 @@ Screens.shelf = () => {
   function paintScore() {
     const res = (G.table && G.table.results) || {};
     const short = (n) => String(n || '').split(' ')[0];
-    const cells = [h('span'), h('span', { class: 'hd n' }, short(myName())), h('span', { class: 'hd n' }, short(partnerName()))];
-    for (const key of ['c4', 'bs']) {
+    const cells = [h('span'), h('span', { class: 'hd n', title: myName() }, short(myName())), h('span', { class: 'hd n', title: partnerName() }, short(partnerName()))];
+    for (const key of Object.keys(GAMES).filter((k) => !GAMES[k].soon)) {
       let me = 0, them = 0;
       for (const id in res) { const r = res[id]; if (r.g !== key) continue; if (r.w === G.seat) me++; else if (r.w === other(G.seat)) them++; }
       cells.push(h('span', null, GAMES[key].name), h('span', { class: 'n' }, me), h('span', { class: 'n' }, them));
