@@ -28,6 +28,7 @@ function openTable(code, { joining = false } = {}) {
   Pref.set('table', code);
   G.unsubTable = Net.doc('tables/' + code).onSnapshot(onTableSnap, (e) => console.warn('table listener', e));
   Live.join(code);
+  Chat.join(code);
   route();
 }
 function closeTable(clearPref = true) {
@@ -35,6 +36,8 @@ function closeTable(clearPref = true) {
   if (G.unsubMatch) G.unsubMatch();
   G.unsubTable = G.unsubMatch = null;
   Live.leave();
+  Chat.leave();
+  chatUnread(false);
   G.code = null; G.table = null; G.seat = null; G.matchId = null; G.match = null; G.tableMissing = false;
   if (clearPref) Pref.del('table');
 }
@@ -78,7 +81,10 @@ function watchMatch(id) {
     if (G.matchId !== id) return;
     const prev = G.match;
     G.match = s.exists ? s.data() : null;
-    if (prev && G.match && G.seat && !joinedBy(prev, other(G.seat)) && joinedBy(G.match, other(G.seat))) { toast(`${partnerName()} joined`); Sound.ding(); }
+    if (prev && G.match && G.seat && !joinedBy(prev, other(G.seat)) && joinedBy(G.match, other(G.seat))) {
+      if (G.waitToast) { G.waitToast.remove(); G.waitToast = null; }
+      toast(`${partnerName()} joined`); Sound.ding();
+    }
     route();
   }, (e) => console.warn('match listener', e));
 }
@@ -200,6 +206,7 @@ function toast(text, ms = 2400) {
   box.append(t);
   while (box.children.length > 3) box.firstChild.remove();
   setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 260); }, ms);
+  return t;
 }
 let sheetToken = 0;
 function openSheet({ title, sub, body, art, actions = [], dismissible = true }) {
@@ -296,6 +303,76 @@ Net.onStatus((on) => {
 });
 function paintSoundBtn() { const b = $('#soundBtn'); b.innerHTML = Sound.on ? ICON.soundOn : ICON.soundOff; b.setAttribute('aria-pressed', String(Sound.on)); }
 $('#soundBtn').addEventListener('click', () => { Sound.on = !Sound.on; Pref.set('sound', Sound.on ? 'on' : 'off'); paintSoundBtn(); Sound.ensure(); Sound.tap(); });
+
+// ---------- chat: reactions and short notes ----------
+const CHAT_EMOJI = [['😭', 'Crying'], ['😂', 'Laughing'], ['😮‍💨', 'Phew'], ['💀', 'Dead'], ['😏', 'Smirk'], ['😡', 'Angry'], ['💋', 'Kiss'], ['👀', 'Eyes'], ['😉', 'Wink']];
+const CHAT_QUICK = ['Your turn!', 'Nice one', 'Nooo', 'Hurry up', 'One sec', 'Good game', 'Rematch?', 'Love you'];
+let chatTok = 0, chatThread = null;
+const chatOpen = () => !$('#sheet').hidden && sheetToken === chatTok;
+function chatUnread(on) { $('#chatBtn').classList.toggle('has', !!on); }
+function chatLine(m) {
+  const mine = m.seat === G.seat;
+  return h('div', { class: 'chat-line ' + (mine ? 'me' : 'them') },
+    h('span', { class: 'who' }, mine ? 'You' : partnerName()),
+    m.e ? h('span', { class: 'e' }, m.e) : h('span', null, m.t));
+}
+function openChat() {
+  Sound.tap();
+  chatUnread(false);
+  const recent = Chat.list.slice(-6);
+  chatThread = h('div', { class: 'chat-thread' }, ...(recent.length ? recent.map(chatLine) : [h('div', { class: 'chat-empty' }, `Nothing yet. Say hi to ${partnerName()}.`)]));
+  const input = h('input', { class: 'chat-input', type: 'text', maxlength: '80', placeholder: 'Write a note…', enterkeyhint: 'send', autocomplete: 'off', 'aria-label': 'Your note' });
+  const body = h('div', { class: 'chat-panel' },
+    chatThread,
+    h('div', { class: 'chat-emoji' }, ...CHAT_EMOJI.map(([e, name]) => h('button', { 'aria-label': name, onclick: () => chatSend({ e }) }, e))),
+    h('div', { class: 'chat-chips' }, ...CHAT_QUICK.map((t) => h('button', { class: 'chip', onclick: () => chatSend({ t }) }, t))),
+    h('form', { class: 'chat-form', onsubmit: (ev) => { ev.preventDefault(); const t = input.value.trim().slice(0, 80); if (t) chatSend({ t }); } },
+      input, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Send')));
+  chatTok = openSheet({ title: 'Say something', body });
+  requestAnimationFrame(() => { chatThread.scrollTop = chatThread.scrollHeight; });
+}
+function chatSend(m) {
+  if (!Chat.send(m)) return;
+  closeSheet(chatTok);
+  vibrate(6);
+  if (m.e) chatPop(m.e, true); else toast('Sent');
+}
+// a big emoji bursting out under the partner's name (or a small one rising from the chat button for your own)
+function chatPop(e, mine) {
+  const r = (mine ? $('#chatBtn') : $('#partnerChip')).getBoundingClientRect();
+  const el = h('div', { class: 'chat-pop' + (mine ? ' mine' : '') }, e);
+  el.style.left = r.left + r.width / 2 + (mine ? 0 : (Math.random() - 0.5) * 60) + 'px';
+  el.style.top = (mine ? r.top : r.bottom + 4) + 'px';
+  $('#chatfx').append(el);
+  const frames = mine
+    ? [{ transform: 'translate(-50%, 0) scale(.6)', opacity: 1 }, { transform: 'translate(-50%, -46px) scale(1)', opacity: 0 }]
+    : [{ transform: 'translate(-50%, -10px) scale(.3)', opacity: 0 }, { transform: 'translate(-50%, 8px) scale(1.25)', opacity: 1, offset: 0.18 }, { transform: 'translate(-50%, 20px) scale(1)', opacity: 1, offset: 0.7 }, { transform: 'translate(-50%, 46px) scale(.95)', opacity: 0 }];
+  settle(el.animate(frames, { duration: mine ? 900 : 2600, easing: 'ease-out', fill: 'forwards' }), mine ? 900 : 2600).then(() => el.remove());
+}
+// a taped note from your partner, in the same stack as toasts; tap it away or it goes by itself
+function chatNote(text) {
+  const box = $('#toast');
+  const note = h('button', { class: 'chat-note' }, h('b', null, partnerName()), h('span', null, text));
+  const bye = () => { if (!note.isConnected) return; note.classList.add('out'); setTimeout(() => note.remove(), 240); };
+  note.addEventListener('click', bye);
+  box.append(note);
+  while (box.children.length > 3) box.firstChild.remove();
+  setTimeout(bye, 4800);
+}
+Chat.onMessage((m, live) => {
+  if (chatThread && chatThread.isConnected) {
+    chatThread.querySelector('.chat-empty')?.remove();
+    chatThread.append(chatLine(m));
+    while (chatThread.children.length > 6) chatThread.firstChild.remove();
+    chatThread.scrollTop = chatThread.scrollHeight;
+  }
+  if (!live || m.seat === G.seat || !G.seat) return;
+  Sound.pop(); vibrate(10);
+  if (m.e) chatPop(m.e, false); else chatNote(m.t);
+  if (!chatOpen()) chatUnread(true);
+});
+$('#chatBtn').insertAdjacentHTML('afterbegin', ICON.chat);
+$('#chatBtn').addEventListener('click', openChat);
 
 // ---------- wake lock while a game is on screen ----------
 const Wake = {

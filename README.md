@@ -2,7 +2,8 @@
 
 Connect Four and Battleships for two, played on two phones wherever you both are.
 One of you sets up a table and sends the invite; the other joins with the four-letter code.
-Rock, paper, scissors decides who goes first.
+Rock, paper, scissors decides who goes first. A short how-to-play card opens every new game,
+games can be saved and carried on later, and you can send each other quick reactions and notes.
 
 It's a static site on Firebase Hosting. Games are stored in Firestore and kept in sync live;
 who's at the table (and where their finger is) goes through the Realtime Database.

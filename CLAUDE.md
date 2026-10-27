@@ -78,6 +78,13 @@ No bundler, no framework, no build step. Keep it that way unless there's a stron
 - `Net.doc(path).onSnapshot()` subscribes to the Firestore document. Your own writes show up
   immediately (latency compensation), before the server confirms. The SDK reconnects by itself;
   `Net.online` follows the Realtime Database connection. Requests give up after 15 s.
+- **Chat** (`Chat` in net.js, UI in app.js "chat"): Realtime Database `chat/{CODE}/{pushId}` =
+  `{seat, e | t, at}` — one emoji (`CHAT_EMOJI`) or a note of ≤ 80 characters, validated in
+  `database.rules.json`. Messages already there when a table opens are history (thread only, no pop-up).
+  Old ones (> 24 h) are pruned on join. Incoming emoji burst under the partner chip (`#chatfx`); notes
+  join the toast stack. Talk only: never put game state in chat.
+- **How to play**: `GAMES[key].howTo` (lobby.js) is the one source of rules: the 'howto' phase before
+  every new game (skippable per game via `Pref howto-skip:<game>`), the ? in the game header, and the shelf sheet.
 - `Live` is presence only, in the Realtime Database at `presence/{CODE}/{pushId}` with
   `onDisconnect().remove()`: `{seat, screen, hover, aim}` so you can see your partner's disc hovering
   over a column or their crosshair on your fleet. Never put game state there. New keys need a line

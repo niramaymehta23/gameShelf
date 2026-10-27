@@ -47,6 +47,8 @@ const ICON = {
   soundOff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M17 9l5 6M22 9l-5 6"/></svg>',
   rotate: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>',
   shuffle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h3c5 0 7 10 12 10h3M3 17h3c2 0 3.5-1.6 4.7-3.6M14 8.6C15 7.6 16.3 7 18 7h3"/><path d="M19 4l3 3-3 3M19 14l3 3-3 3"/></svg>',
+  help: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.8"/><circle cx="12" cy="17.2" r=".6" fill="currentColor"/></svg>',
+  chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/><path d="M8 10h8M8 13.5h5"/></svg>',
   clear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/></svg>',
 };
 
@@ -87,6 +89,7 @@ const Sound = {
   boom() { this.noise(0.8, { vol: 0.55, freq: 900, to: 60, q: 0.7 }); this.tone(110, 0.5, { type: 'sine', vol: 0.3, to: 38 }); },
   win() { [523, 659, 784, 1046].forEach((f, i) => this.tone(f, 0.28, { type: 'triangle', vol: 0.11, at: i * 0.11 })); },
   lose() { [440, 392, 330].forEach((f, i) => this.tone(f, 0.3, { type: 'triangle', vol: 0.08, at: i * 0.14 })); },
+  pop() { this.tone(640, 0.09, { type: 'triangle', vol: 0.07, to: 980 }); },
   ding() { this.tone(988, 0.25, { type: 'sine', vol: 0.08 }); this.tone(1318, 0.3, { type: 'sine', vol: 0.06, at: 0.08 }); },
 };
 document.addEventListener('pointerdown', () => Sound.ensure(), { capture: true, passive: true });

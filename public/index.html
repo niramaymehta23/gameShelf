@@ -27,11 +27,13 @@
   <header id="bar" hidden>
     <div class="bar-code" id="barCode" aria-label="Table code"></div>
     <div class="partner-chip" id="partnerChip"><i class="dot" id="partnerDot"></i><span id="partnerName">Waiting</span></div>
+    <button class="icon-btn" id="chatBtn" aria-label="Chat and reactions"><i class="unread"></i></button>
     <button class="icon-btn" id="soundBtn" aria-label="Sound on or off"></button>
   </header>
   <main id="stage"></main>
 </div>
 <div id="toast" aria-live="polite"></div>
+<div id="chatfx" aria-live="polite"></div>
 <div id="sheet" hidden></div>
 
 <!-- Firebase (compat builds work as classic scripts), then our classic scripts sharing globals; the order matters. -->

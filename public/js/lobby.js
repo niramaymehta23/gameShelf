@@ -191,14 +191,48 @@ Screens.waiting = () => ({
 const GAMES = {
   c4: {
     name: 'Connect Four', cls: 'c4', art: 'art/box-c4.png',
-    rules: ['Rock, paper, scissors (best of 3) decides who drops first.', 'First player is red, second is yellow.', 'Line up four in a row, across, down or diagonally.'],
+    howTo: [
+      { t: 'Who goes first', d: 'Rock, paper, scissors, best of three. The winner is red and drops first.', art: 'art/rps-rock.png' },
+      { t: 'Drop a disc', d: 'Drag along the top of the board and let go, or tap a column. It falls to the lowest space.', art: 'art/disc-red.png' },
+      { t: 'Four in a row wins', d: 'Across, down or diagonally. Block your partner’s lines while you build yours.', art: 'art/disc-yellow.png' },
+    ],
   },
   bs: {
     name: 'Battleships', cls: 'bs', art: 'art/box-bs.png',
-    rules: ['Rock, paper, scissors (best of 3) decides who fires first.', 'Hide your five ships on your chart. Your partner can’t see them.', 'Take turns firing. A hit earns you another shot.', 'Sink every ship to win.'],
+    howTo: [
+      { t: 'Who goes first', d: 'Rock, paper, scissors, best of three. The winner fires first.', art: 'art/rps-rock.png' },
+      { t: 'Hide your fleet', d: 'Drag your five ships onto your chart. Pick one and press Turn, or Shuffle them all. Your partner can’t see them.', art: 'art/box-bs.png' },
+      { t: 'Fire', d: 'Tap a square in their waters, then tap it again or press Fire.' },
+      { t: 'A hit goes again', d: 'A hit burns and earns another shot. A miss plants a white flag and passes the turn. Sink every ship to win.' },
+    ],
   },
   gw: { name: 'Guess Who?', cls: 'gw', soon: true, art: 'art/box-gw.png' },
 };
+
+// ---------------- how to play ----------------
+// The same steps show before every new game, behind the ? in a game, and on the shelf.
+function howToList(key) {
+  return h('ol', { class: 'howto' }, ...GAMES[key].howTo.map((s, i) => h('li', null,
+    h('span', { class: 'n' }, i + 1),
+    h('div', null, h('b', null, s.t), h('span', null, s.d)),
+    s.art ? h('img', { class: 'wc', src: s.art, alt: '' }) : null)));
+}
+function showHowTo(key) {
+  openSheet({ title: `How to play ${GAMES[key].name}`, body: h('div', { class: 'sheet-body' }, howToList(key)), actions: [{ label: 'Got it', kind: 'ghost' }] });
+}
+function makeHowTo(box, ctx, game) {
+  const skip = h('input', { type: 'checkbox' });
+  box.append(h('div', { class: 'howto-wrap' },
+    h('div', { class: 'howto-card paper' },
+      h('div', { class: 'tape', style: 'top:-12px;left:50%;margin-left:-44px;transform:rotate(-3deg)' }),
+      h('span', { class: 'eyebrow' }, 'Before you start'),
+      h('div', { class: 'display h2' }, `How to play ${GAMES[game].name}`),
+      howToList(game),
+      h('label', { class: 'howto-skip' }, skip, 'Don’t show this before every game'),
+      h('button', { class: 'btn btn-felt', onclick: () => { if (skip.checked) Pref.set('howto-skip:' + game, '1'); Sound.tap(); ctx.onHowToDone(); } }, 'Got it'),
+    )));
+  return { update() {} };
+}
 
 Screens.shelf = () => {
   let el, note, sheet;
@@ -270,8 +304,8 @@ Screens.shelf = () => {
     box.classList.add('pulled');
     const saved = savedId(key);
     const body = h('div', { class: 'sheet-body' },
-      saved ? h('p', { style: 'margin:0 0 8px' }, `You have a saved game. Carry on where you left off, or start a new one (the saved game is thrown away).`) : null,
-      h('ul', null, ...g.rules.map((r) => h('li', null, r))));
+      saved ? h('p', { style: 'margin:0 0 12px' }, `You have a saved game. Carry on where you left off, or start a new one (the saved game is thrown away).`) : null,
+      howToList(key));
     openSheet({
       title: g.name, body,
       actions: saved
@@ -287,26 +321,29 @@ Screens.shelf = () => {
 
 // ---------------- match shell ----------------
 Screens.match = () => {
-  let el, phaseEl, phase = null, phaseName = null, introDone = false;
+  let el, phaseEl, phase = null, phaseName = null, introDone = false, howToDone = true;
   const S = {
     cls: 'match',
     mount(e) {
       el = e;
       const m = G.match;
       introDone = Pref.get('intro:' + m.id) === '1';
+      // decided once on the way in, so the card doesn't vanish when the partner makes the first pick
+      howToDone = Pref.get('howto:' + m.id) === '1' || Pref.get('howto-skip:' + m.game) === '1' || hasProgress(m);
       el.append(h('div', { class: 'match-head' },
         h('button', { class: 'pill-back', html: ICON.back + '<span>Shelf</span>', onclick: confirmLeave }),
         h('div', { class: 'title' }, GAMES[m.game].name),
+        h('button', { class: 'icon-btn', html: ICON.help, 'aria-label': 'How to play', onclick: () => { Sound.tap(); showHowTo(m.game); } }),
       ));
       phaseEl = h('div', { class: 'phase' });
       el.append(phaseEl);
       Wake.on();
-      if (!joinedBy(m, other(G.seat))) toast(`Waiting for ${partnerName()} to join…`, 3200);
+      if (!joinedBy(m, other(G.seat))) G.waitToast = toast(`Waiting for ${partnerName()} to join…`, 3200);
     },
     update() {
       const m = G.match; if (!m) return;
       const st = rpsState(m);
-      const want = (!st.starter || !introDone) ? 'rps' : m.game;
+      const want = !howToDone ? 'howto' : (!st.starter || !introDone) ? 'rps' : m.game;
       if (want !== phaseName) setPhase(want);
       phase && phase.update(m);
     },
@@ -320,8 +357,12 @@ Screens.match = () => {
     phaseName = name;
     const box = h('div', { style: 'flex:1;display:flex;flex-direction:column;min-height:0;animation:screenIn .4s var(--ease-out) both' });
     phaseEl.append(box);
-    const ctx = { onIntroDone: () => { introDone = true; Pref.set('intro:' + G.match.id, '1'); S.update(); } };
-    if (name === 'rps') phase = makeRPS(box, ctx);
+    const ctx = {
+      onIntroDone: () => { introDone = true; Pref.set('intro:' + G.match.id, '1'); S.update(); },
+      onHowToDone: () => { howToDone = true; Pref.set('howto:' + G.match.id, '1'); S.update(); },
+    };
+    if (name === 'howto') phase = makeHowTo(box, ctx, G.match.game);
+    else if (name === 'rps') phase = makeRPS(box, ctx);
     else if (name === 'c4') phase = makeC4(box, ctx);
     else phase = makeBS(box, ctx);
   }

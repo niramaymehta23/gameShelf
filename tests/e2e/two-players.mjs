@@ -27,6 +27,7 @@ function startServer() {
   return { url: process.env.E2E_URL || 'http://localhost:3000', stop() {} };
 }
 
+const gotIt = (p) => p.locator('.howto-card').getByRole('button', { name: 'Got it' }).click();
 const snap = (p, name) => p.screenshot({ path: path.join(SHOTS, name + '.png') });
 const state = (p, expr) => p.evaluate(expr);
 
@@ -108,6 +109,13 @@ try {
   await a.locator('.gbox.c4').click();
   await a.getByRole('button', { name: 'Play Connect Four' }).click();
   await b.locator('#sheet').getByRole('button', { name: 'Join' }).click();
+  await a.locator('.howto-card').waitFor(); await b.locator('.howto-card').waitFor();
+  await snap(a, '03-howto');
+  check((await a.locator('.howto-card').innerText()).includes('Four in a row'), 'how-to-play card before a new game');
+  await gotIt(a); await gotIt(b);
+  await a.locator('.match-head [aria-label="How to play"]').click();
+  check(await a.locator('#sheet .panel', { hasText: 'How to play Connect Four' }).isVisible(), '? reopens the rules');
+  await a.locator('#sheet').getByRole('button', { name: 'Got it' }).click();
   await a.locator('.choices').waitFor(); await b.locator('.choices').waitFor();
   await sleep(500);
   await a.locator('.choices .hand', { hasText: 'Rock' }).click();
@@ -149,6 +157,7 @@ try {
   await snap(a, '05-invite');
   check((await a.locator('#sheet').innerText()).includes('Saharsh opened Battleships'), 'partner is asked to join');
   await a.locator('#sheet').getByRole('button', { name: 'Join' }).click();
+  await gotIt(a); await gotIt(b);
   await a.locator('.choices').waitFor(); await b.locator('.choices').waitFor();
   await sleep(500);
   await rpsRound(a, b, 'Scissors', 'Rock');
@@ -205,6 +214,7 @@ try {
   await sleep(800);
   await a.locator('.gbox.c4').click(); await sheetBtn(a, 'Play Connect Four');
   await sheetBtn(b, 'Join');
+  await gotIt(a); await gotIt(b);
   await a.locator('.choices').waitFor(); await b.locator('.choices').waitFor();
   await sleep(500);
   await a.locator('.choices .hand', { hasText: 'Rock' }).click();
@@ -239,6 +249,27 @@ try {
   await sleep(600);
   check(await state(a, '!G.table.saved.c4'), 'nothing saved after both quit');
   check(!(await a.locator('.gbox.c4 .sticker.saved').isVisible()), 'saved sticker is gone');
+
+  console.log('Chat');
+  await a.locator('#chatBtn').click();
+  await snap(a, '11-chat-sheet');
+  await a.locator('.chat-emoji button[aria-label="Laughing"]').click();
+  check(await b.locator('#chatfx .chat-pop', { hasText: '😂' }).waitFor({ timeout: 6000 }).then(() => true, () => false), 'emoji pops up on the other phone');
+  check(await b.locator('#chatBtn.has').isVisible(), 'unread dot on the other phone');
+  await sleep(700);
+  await b.locator('#chatBtn').click();
+  check(!(await b.locator('#chatBtn.has').count()), 'opening the chat clears the dot');
+  check((await b.locator('.chat-thread').innerText()).includes('😂'), 'thread shows the reaction');
+  await b.locator('.chat-chips .chip', { hasText: 'Nice one' }).click();
+  check(await a.locator('#toast .chat-note', { hasText: 'Nice one' }).waitFor({ timeout: 6000 }).then(() => true, () => false), 'quick reply shows as a note');
+  await snap(a, '12-chat-note');
+  await sleep(700);
+  await a.locator('#chatBtn').click();
+  await a.locator('.chat-input').fill('x'.repeat(90));
+  check((await a.locator('.chat-input').inputValue()).length === 80, 'custom notes stop at 80 characters');
+  await a.locator('.chat-input').fill('see you at 8 ❤');
+  await a.locator('.chat-input').press('Enter');
+  check(await b.locator('#toast .chat-note', { hasText: 'see you at 8' }).waitFor({ timeout: 6000 }).then(() => true, () => false), 'custom note arrives');
 
   console.log('Recovery');
   await a.reload();

@@ -10,6 +10,7 @@
          shape the game code was written against. update deep-merges, like before.
    Live  presence inside a table: which seat each open phone is in, what
          screen it's on, where its finger is (column hover, aim square).
+   Chat  reactions and short notes between the two phones (Realtime Database).
 
    Two players on ONE computer (for testing): add ?as=2 to the second tab's
    URL. It gets its own device id, so it can sit in the other seat.
@@ -170,4 +171,44 @@ const Live = {
     return list.sort((a, b) => (b.at || 0) - (a.at || 0))[0];
   },
   seatOnline(seat) { return this.peers.some((p) => p.pres && p.pres.seat === seat); },
+};
+
+// ---------- chat: quick reactions and short notes between the two phones ----------
+// chat/{CODE}/{pushId} = {seat, e (emoji) | t (text, ≤ 80), at}. Talk only: never game state.
+// Messages already there when the table opens are history (shown in the thread, never popped up).
+const Chat = {
+  code: null, list: [], listeners: new Set(), off: null, ready: false, last: 0,
+  onMessage(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); },
+  join(code) {
+    if (this.code) this.leave();
+    this.code = code; this.list = []; this.ready = false;
+    const room = FB.db.ref('chat/' + code);
+    const q = room.orderByChild('at').startAt(Date.now() - 12 * 3600e3).limitToLast(30);
+    const cb = q.on('child_added', (s) => {
+      const v = s.val();
+      if (!v || !v.seat || (!v.e && !v.t)) return;
+      const msg = { id: s.key, seat: v.seat, e: v.e || null, t: v.t || null, at: v.at || 0 };
+      this.list.push(msg);
+      if (this.list.length > 30) this.list.shift();
+      for (const fn of this.listeners) { try { fn(msg, this.ready); } catch (e) { console.error(e); } }
+    }, (e) => console.warn('chat listener', e));
+    q.once('value').then(() => { if (this.code === code) this.ready = true; }).catch(() => {});
+    this.off = () => q.off('child_added', cb);
+    // tidy up: notes older than a day
+    room.orderByChild('at').endAt(Date.now() - 24 * 3600e3).once('value')
+      .then((old) => old.forEach((c) => { c.ref.remove().catch(() => {}); })).catch(() => {});
+  },
+  leave() {
+    if (this.off) this.off();
+    this.off = null; this.code = null; this.list = []; this.ready = false;
+  },
+  // false when there's no table or it's too soon after the last one (a light guard against button-mashing)
+  send(msg) {
+    if (!this.code || !G.seat) return false;
+    const now = Date.now();
+    if (now - this.last < 600) return false;
+    this.last = now;
+    FB.db.ref('chat/' + this.code).push({ seat: G.seat, ...msg, at: firebase.database.ServerValue.TIMESTAMP }).catch((e) => console.warn('chat send', e));
+    return true;
+  },
 };
