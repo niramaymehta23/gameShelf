@@ -269,6 +269,7 @@ Screens.shelf = () => {
       note = h('p', { class: 'hand-note shelf-note' });
       el.append(dresser, note,
         h('div', { class: 'shelf-foot' },
+          h('div', { class: 'table-code' }, 'Table code ', h('b', null, G.code)),
           h('button', { class: 'btn btn-ghost', onclick: () => openSheet({
             title: 'Get up from the table?',
             body: `You can come back any time with code ${G.code}.`,
@@ -330,11 +331,10 @@ Screens.match = () => {
       introDone = Pref.get('intro:' + m.id) === '1';
       // decided once on the way in, so the card doesn't vanish when the partner makes the first pick
       howToDone = Pref.get('howto:' + m.id) === '1' || Pref.get('howto-skip:' + m.game) === '1' || hasProgress(m);
-      el.append(h('div', { class: 'match-head' },
-        h('button', { class: 'pill-back', html: ICON.back + '<span>Shelf</span>', onclick: confirmLeave }),
-        h('div', { class: 'title' }, GAMES[m.game].name),
+      setBar({ title: GAMES[m.game].name, left: [
+        h('button', { class: 'icon-btn', html: ICON.back, 'aria-label': 'Back to the shelf', onclick: confirmLeave }),
         h('button', { class: 'icon-btn', html: ICON.help, 'aria-label': 'How to play', onclick: () => { Sound.tap(); showHowTo(m.game); } }),
-      ));
+      ] });
       phaseEl = h('div', { class: 'phase' });
       el.append(phaseEl);
       Wake.on();

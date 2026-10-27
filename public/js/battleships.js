@@ -416,7 +416,11 @@ function makeBattle(box) {
     if (!st) return;
     const owner = view === 'target' ? opp : seat;
     const sunk = new Set(shownShots().filter((s) => s.sunk && s.target === owner).map((s) => s.sunk));
-    trackEl.replaceChildren(h('span', { class: 'who' }, owner === seat ? 'Yours:' : `${P.split(' ')[0]}’s:`), ...FLEET.map((f) => h('span', { class: sunk.has(f.id) ? 'sunk' : '' }, `${f.name} ${f.len}`)));
+    // a small label, then the five ships as 3 + 2, each with its length as little hull squares
+    trackEl.replaceChildren(
+      h('div', { class: 'who' }, owner === seat ? 'Your fleet' : `${P.split(' ')[0]}’s fleet`),
+      h('div', { class: 'ships' }, ...FLEET.map((f) => h('div', { class: 'ship-tag' + (sunk.has(f.id) ? ' sunk' : ''), 'aria-label': `${f.name}, ${f.len} squares${sunk.has(f.id) ? ', sunk' : ''}` },
+        h('b', null, f.name), h('span', { class: 'len' }, ...Array.from({ length: f.len }, () => h('i')))))));
   }
   function drawMyFleet() {
     for (const s of st.fleets[seat]) {

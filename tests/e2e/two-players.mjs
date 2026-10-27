@@ -102,18 +102,20 @@ try {
   await a.locator('.gbox').first().waitFor({ timeout: 8000 });
   await b.locator('.gbox').first().waitFor({ timeout: 8000 });
   await sleep(600);
-  check((await a.locator('#partnerName').innerText()).includes('Saharsh is here'), 'host sees the partner online');
+  check((await a.locator('#presence').getAttribute('aria-label')).includes('Saharsh is here') && await a.locator('#partnerDot.here').isVisible(), 'host sees the partner here (green dot)');
   await snap(b, '02-shelf');
 
   console.log('Connect Four');
   await a.locator('.gbox.c4').click();
   await a.getByRole('button', { name: 'Play Connect Four' }).click();
+  await sleep(800);
+  check(await a.locator('#partnerDot.near').isVisible(), 'amber dot while the partner is still at the shelf');
   await b.locator('#sheet').getByRole('button', { name: 'Join' }).click();
   await a.locator('.howto-card').waitFor(); await b.locator('.howto-card').waitFor();
   await snap(a, '03-howto');
   check((await a.locator('.howto-card').innerText()).includes('Four in a row'), 'how-to-play card before a new game');
   await gotIt(a); await gotIt(b);
-  await a.locator('.match-head [aria-label="How to play"]').click();
+  await a.locator('#bar [aria-label="How to play"]').click();
   check(await a.locator('#sheet .panel', { hasText: 'How to play Connect Four' }).isVisible(), '? reopens the rules');
   await a.locator('#sheet').getByRole('button', { name: 'Got it' }).click();
   await a.locator('.choices').waitFor(); await b.locator('.choices').waitFor();
@@ -221,7 +223,7 @@ try {
   await sleep(600);
   const savedId = await state(a, 'G.match.id');
   // A quits; B is stopped and asked to decide, and keeps it
-  await a.locator('.pill-back').click();
+  await a.locator('#bar [aria-label="Back to the shelf"]').click();
   await snap(a, '08-leave-sheet');
   await sheetBtn(a, 'Quit without saving');
   check(await sheetHas(b, 'Niramay quit Connect Four'), 'partner is told the other quit');
@@ -241,7 +243,7 @@ try {
   await a.locator('.choices').waitFor(); await b.locator('.choices').waitFor();
   check(await state(b, `G.match.id === '${savedId}' && !!G.match.rps.r1.host`), 'saved game picks up where it left off');
   // B quits, A quits too: gone
-  await b.locator('.pill-back').click(); await sheetBtn(b, 'Quit without saving');
+  await b.locator('#bar [aria-label="Back to the shelf"]').click(); await sheetBtn(b, 'Quit without saving');
   check(await sheetHas(a, 'Saharsh quit Connect Four'), 'other way round: told about the quit');
   await sheetBtn(a, 'Quit too');
   check(await sheetHas(b, 'Niramay quit too'), 'both quit: told it was put away');
@@ -254,7 +256,8 @@ try {
   await a.locator('#chatBtn').click();
   await snap(a, '11-chat-sheet');
   await a.locator('.chat-emoji button[aria-label="Laughing"]').click();
-  check(await b.locator('#chatfx .chat-pop', { hasText: '😂' }).waitFor({ timeout: 6000 }).then(() => true, () => false), 'emoji pops up on the other phone');
+  check(await b.locator('#chatfx .chat-pop', { hasText: '😂' }).first().waitFor({ timeout: 6000 }).then(() => true, () => false), 'emoji rains on the other phone');
+  check(await b.locator('#chatfx .chat-pop').count() >= 8, 'a shower of them, not just one');
   check(await b.locator('#chatBtn.has').isVisible(), 'unread dot on the other phone');
   await sleep(700);
   await b.locator('#chatBtn').click();
@@ -263,6 +266,7 @@ try {
   await b.locator('.chat-chips .chip', { hasText: 'Nice one' }).click();
   check(await a.locator('#toast .chat-note', { hasText: 'Nice one' }).waitFor({ timeout: 6000 }).then(() => true, () => false), 'quick reply shows as a note');
   await snap(a, '12-chat-note');
+  await snap(b, '12-chat-rain');
   await sleep(700);
   await a.locator('#chatBtn').click();
   await a.locator('.chat-input').fill('x'.repeat(90));

@@ -25,10 +25,15 @@
 <body>
 <div id="app">
   <header id="bar" hidden>
-    <div class="bar-code" id="barCode" aria-label="Table code"></div>
-    <div class="partner-chip" id="partnerChip"><i class="dot" id="partnerDot"></i><span id="partnerName">Waiting</span></div>
-    <button class="icon-btn" id="chatBtn" aria-label="Chat and reactions"><i class="unread"></i></button>
-    <button class="icon-btn" id="soundBtn" aria-label="Sound on or off"></button>
+    <div class="bar-side" id="barLeft"></div>
+    <div class="bar-mid">
+      <div class="bar-title" id="barTitle"></div>
+      <button class="presence" id="presence"><i class="dot" id="partnerDot"></i><span id="partnerName"></span></button>
+    </div>
+    <div class="bar-side right">
+      <button class="icon-btn" id="chatBtn" aria-label="Chat and reactions"><i class="unread"></i></button>
+      <button class="icon-btn" id="soundBtn" aria-label="Sound on or off"></button>
+    </div>
   </header>
   <main id="stage"></main>
 </div>

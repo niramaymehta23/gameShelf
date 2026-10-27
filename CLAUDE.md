@@ -44,6 +44,7 @@ public/js/             Classic scripts sharing globals, loaded IN THIS ORDER:
   util.js              h() DOM helper, sleep/settle, icons, Sound (WebAudio synth, no files)
   net.js               FB (Firebase init), Pref (localStorage), Net (Firestore document API), Live (RTDB presence)
   app.js               G (app state), write(), table/match lifecycle, toast, sheet, router, top bar
+                       (setBar({title,left}) per screen; partner dot: green same screen, amber elsewhere at the table, red offline)
   lobby.js             Screens: landing, seat, waiting, shelf, match shell; GAMES registry; end sheet
   rps.js               rpsState() + the who-goes-first phase
   connect4.js          c4State() + the board
@@ -108,7 +109,9 @@ Game night on a blue linen tablecloth. Everything is a physical object on the ta
   ochre `--ochre` (selection, aim, yellow discs), navy `--navy`, sage `--sage`.
 - Slight rotations on cards (±0.5–1.5°) are intentional. Don't "fix" them.
 - Don't introduce generic UI: no gradient washes, glassmorphism, emoji, default shadows on
-  everything, or system-looking cards. New screens should be built from the same materials.
+  everything, or system-looking cards. No pill shapes for labels, status or chips (Niramay finds them
+  "vibe coded"); use paper, tape, small caps and handwriting instead. Emoji appear only as chat reactions.
+  Header buttons are all `.icon-btn` (42 px), two each side, so the title stays centred. New screens should be built from the same materials.
 - Touch rules: targets ≥ 44 px, no hover-only affordances, `touch-action: none` on boards that
   drag, `pointer*` events (not mouse/touch), and test at 390×844.
 

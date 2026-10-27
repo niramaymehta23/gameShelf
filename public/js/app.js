@@ -265,6 +265,7 @@ function show(name) {
     const old = cur.el; old.classList.add('leaving'); setTimeout(() => old.remove(), 230);
   }
   const key = name.split(':')[0];
+  setBar({});
   const obj = Screens[key]();
   const el = h('section', { class: 'screen ' + (obj.cls || '') });
   stage.append(el);
@@ -277,21 +278,37 @@ let resizeT;
 window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { cur.obj && cur.obj.relayout && cur.obj.relayout(); }, 180); });
 
 // ---------- top bar ----------
+// One row on every table screen: [screen's buttons] [title, partner dot] [chat, sound].
+// A screen puts its own buttons and title in with setBar() when it mounts; show() clears them.
+function setBar({ title = '', left = [] }) {
+  $('#barTitle').textContent = title;
+  $('#barTitle').hidden = !title;
+  $('#barLeft').replaceChildren(...left);
+}
+// The partner dot: green when they're on the same screen as you, amber when they're at the table
+// somewhere else (the shelf, another game), red when they're not connected.
+function presence() {
+  const p = G.table && G.table[other(G.seat)];
+  const peer = Live.partner();
+  const where = peer && peer.pres && peer.pres.screen;
+  if (!p) return { state: 'gone', name: 'Partner', text: 'Waiting for your partner to join the table' };
+  const first = p.name.split(' ')[0];
+  if (!Net.online) return { state: 'gone', name: first, text: 'You’re offline. Reconnecting…' };
+  if (!peer) return { state: 'gone', name: first, text: `${p.name} isn’t connected right now` };
+  if (where === cur.name.split(':')[0]) return { state: 'here', name: first, text: `${p.name} is here with you` };
+  return { state: 'near', name: first, text: `${p.name} is ${where === 'shelf' ? 'at the shelf' : where === 'match' ? 'in a game' : 'at the table'}` };
+}
 function updateBar() {
   const bar = $('#bar');
   const inTable = !!(G.code && G.table && G.seat);
   bar.hidden = !inTable;
   if (!inTable) return;
-  const codeBox = $('#barCode');
-  if (codeBox.dataset.code !== G.code) {
-    codeBox.dataset.code = G.code;
-    codeBox.replaceChildren(...G.code.split('').map((ch) => h('span', { class: 'tile' }, ch)));
-  }
-  const p = G.table[other(G.seat)];
-  const online = !!Live.partner();
-  $('#partnerDot').classList.toggle('on', online && Net.online);
-  $('#partnerName').textContent = !Net.online ? 'Reconnecting…' : p ? (online ? `${p.name} is here` : `${p.name} is away`) : 'Waiting for a partner';
+  const ps = presence();
+  $('#partnerDot').className = 'dot ' + ps.state;
+  $('#partnerName').textContent = ps.name;
+  $('#presence').setAttribute('aria-label', ps.text);
 }
+$('#presence').addEventListener('click', () => { Sound.tap(); toast(presence().text); });
 Live.onChange(() => { updateBar(); cur.obj && cur.obj.onPeers && cur.obj.onPeers(); });
 // Losing the connection for more than a moment gets a note; coming back is quiet unless it was noticed.
 let offlineNoticeT = null, offlineNoticed = false;
@@ -319,7 +336,7 @@ function chatLine(m) {
 function openChat() {
   Sound.tap();
   chatUnread(false);
-  const recent = Chat.list.slice(-6);
+  const recent = Chat.list;
   chatThread = h('div', { class: 'chat-thread' }, ...(recent.length ? recent.map(chatLine) : [h('div', { class: 'chat-empty' }, `Nothing yet. Say hi to ${partnerName()}.`)]));
   const input = h('input', { class: 'chat-input', type: 'text', maxlength: '80', placeholder: 'Write a note…', enterkeyhint: 'send', autocomplete: 'off', 'aria-label': 'Your note' });
   const body = h('div', { class: 'chat-panel' },
@@ -339,15 +356,32 @@ function chatSend(m) {
 }
 // a big emoji bursting out under the partner's name (or a small one rising from the chat button for your own)
 function chatPop(e, mine) {
-  const r = (mine ? $('#chatBtn') : $('#partnerChip')).getBoundingClientRect();
-  const el = h('div', { class: 'chat-pop' + (mine ? ' mine' : '') }, e);
-  el.style.left = r.left + r.width / 2 + (mine ? 0 : (Math.random() - 0.5) * 60) + 'px';
-  el.style.top = (mine ? r.top : r.bottom + 4) + 'px';
+  if (!mine) return chatRain(e);
+  const r = $('#chatBtn').getBoundingClientRect();
+  const el = h('div', { class: 'chat-pop mine' }, e);
+  el.style.left = r.left + r.width / 2 + 'px';
+  el.style.top = r.top + 'px';
   $('#chatfx').append(el);
-  const frames = mine
-    ? [{ transform: 'translate(-50%, 0) scale(.6)', opacity: 1 }, { transform: 'translate(-50%, -46px) scale(1)', opacity: 0 }]
-    : [{ transform: 'translate(-50%, -10px) scale(.3)', opacity: 0 }, { transform: 'translate(-50%, 8px) scale(1.25)', opacity: 1, offset: 0.18 }, { transform: 'translate(-50%, 20px) scale(1)', opacity: 1, offset: 0.7 }, { transform: 'translate(-50%, 46px) scale(.95)', opacity: 0 }];
-  settle(el.animate(frames, { duration: mine ? 900 : 2600, easing: 'ease-out', fill: 'forwards' }), mine ? 900 : 2600).then(() => el.remove());
+  settle(el.animate([{ transform: 'translate(-50%, 0) scale(.6)', opacity: 1 }, { transform: 'translate(-50%, -46px) scale(1)', opacity: 0 }], { duration: 900, easing: 'ease-out', fill: 'forwards' }), 900).then(() => el.remove());
+}
+// their reaction rains down over the top third of the screen: nine copies, each its own size, sway and pace
+function chatRain(e) {
+  const W = innerWidth, fall = innerHeight * 0.34;
+  for (let i = 0; i < 9; i++) {
+    const el = h('div', { class: 'chat-pop' }, e);
+    const size = 30 + Math.random() * 26;
+    const x = Math.min(W - size / 2 - 30, Math.max(size / 2 + 30, W * ((i + Math.random()) / 9)));
+    const sway = (Math.random() - 0.5) * 50, spin = (Math.random() - 0.5) * 50;
+    const dur = 1700 + Math.random() * 900, delay = Math.random() * 650;
+    el.style.cssText = `left:${x}px;top:-60px;font-size:${size}px`;
+    $('#chatfx').append(el);
+    settle(el.animate([
+      { transform: 'translate(-50%, 0) rotate(0deg)', opacity: 0 },
+      { transform: `translate(calc(-50% + ${sway * 0.4}px), ${fall * 0.25 + 60}px) rotate(${spin * 0.4}deg)`, opacity: 1, offset: 0.2 },
+      { transform: `translate(calc(-50% + ${sway}px), ${fall * 0.8 + 60}px) rotate(${spin}deg)`, opacity: 1, offset: 0.75 },
+      { transform: `translate(calc(-50% + ${sway * 1.2}px), ${fall + 60}px) rotate(${spin * 1.2}deg)`, opacity: 0 },
+    ], { duration: dur, delay, easing: 'cubic-bezier(.3,.1,.6,1)', fill: 'both' }), dur + delay).then(() => el.remove());
+  }
 }
 // a taped note from your partner, in the same stack as toasts; tap it away or it goes by itself
 function chatNote(text) {
@@ -363,7 +397,7 @@ Chat.onMessage((m, live) => {
   if (chatThread && chatThread.isConnected) {
     chatThread.querySelector('.chat-empty')?.remove();
     chatThread.append(chatLine(m));
-    while (chatThread.children.length > 6) chatThread.firstChild.remove();
+    while (chatThread.children.length > 30) chatThread.firstChild.remove();
     chatThread.scrollTop = chatThread.scrollHeight;
   }
   if (!live || m.seat === G.seat || !G.seat) return;
