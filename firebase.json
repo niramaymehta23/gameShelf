@@ -1,0 +1,20 @@
+{
+  "hosting": {
+    "public": "public",
+    "cleanUrls": true,
+    "rewrites": [{ "source": "**", "destination": "/index.html" }],
+    "headers": [
+      { "source": "**", "headers": [{ "key": "Cache-Control", "value": "no-cache" }, { "key": "X-Content-Type-Options", "value": "nosniff" }] },
+      { "source": "/@(art|icons)/**", "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }] }
+    ]
+  },
+  "firestore": { "rules": "firestore.rules" },
+  "database": { "rules": "database.rules.json" },
+  "emulators": {
+    "singleProjectMode": true,
+    "hosting": { "host": "0.0.0.0", "port": 3000 },
+    "firestore": { "host": "0.0.0.0", "port": 8080 },
+    "database": { "host": "0.0.0.0", "port": 9000 },
+    "ui": { "enabled": false }
+  }
+}

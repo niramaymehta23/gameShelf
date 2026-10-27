@@ -1,0 +1,13 @@
+rules_version = '2';
+// Same trust model as the old server: anyone with a table code can play at that table.
+// Only the two document shapes the app uses are allowed, and tables can't be listed.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /tables/{code} {
+      allow get, create, update, delete: if code.matches('^[A-Z]{4}$');
+      match /matches/{id} {
+        allow read, create, update, delete: if code.matches('^[A-Z]{4}$') && id.matches('^[a-z0-9]{4,24}$');
+      }
+    }
+  }
+}

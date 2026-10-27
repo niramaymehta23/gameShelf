@@ -1,17 +1,30 @@
 'use strict';
 /* =========================================================
-   net.js — everything that talks to the server.
+   net.js — everything that talks to Firebase.
 
+   FB    the Firebase app: Firestore (fs) for documents, Realtime Database (db) for presence.
+         On localhost or a LAN address it talks to the local emulators (npm start).
    Pref  per-device settings in localStorage (device id, name, last table, sound).
-   Net   one WebSocket to /ws. Documents live on the server; Net.doc(path)
-         gives get / set / update / delete / onSnapshot, the same shape the
-         game code was written against.
+   Net   documents. Net.doc(path) gives get / set / update / delete / onSnapshot, the same
+         shape the game code was written against. update deep-merges, like before.
    Live  presence inside a table: which seat each open phone is in, what
          screen it's on, where its finger is (column hover, aim square).
 
    Two players on ONE computer (for testing): add ?as=2 to the second tab's
    URL. It gets its own device id, so it can sit in the other seat.
    ========================================================= */
+
+// ---------- Firebase ----------
+const EMULATED = /^(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)$/.test(location.hostname);
+const FB = (() => {
+  const cfg = EMULATED
+    ? { apiKey: 'demo', projectId: 'demo-gameshelf', databaseURL: 'https://demo-gameshelf.firebaseio.com' }
+    : FIREBASE_CONFIG;
+  firebase.initializeApp(cfg);
+  const fs = firebase.firestore(), db = firebase.database();
+  if (EMULATED) { fs.useEmulator(location.hostname, 8080); db.useEmulator(location.hostname, 9000); }
+  return { fs, db };
+})();
 
 // ---------- per-device preferences ----------
 const PROFILE = (() => {
@@ -25,61 +38,33 @@ const Pref = {
   del(k) { delete this.mem[k]; try { localStorage.removeItem(this.prefix + k); } catch (e) {} },
 };
 
-// ---------- connection ----------
-const Net = {
-  ws: null,
-  online: false,
-  seq: 0,
-  pending: new Map(),   // request id -> { resolve, reject, timer, msg }
-  outbox: [],           // requests made while offline, sent on reconnect
-  subs: new Map(),      // path -> Set<listener>
-  cache: new Map(),     // path -> last snapshot
-  statusFns: new Set(),
-  backoff: 500,
-  retryTimer: null,
+// ---------- documents ----------
+// {fleets:{host:[…]}} → {'fleets.host': […]}, so an update merges into nested maps instead of replacing them
+function fieldPaths(obj, pre = '', out = {}) {
+  for (const k of Object.keys(obj)) {
+    const v = obj[k];
+    if (v === undefined) continue;
+    if (isObj(v) && Object.keys(v).length) fieldPaths(v, pre + k + '.', out);
+    else out[pre + k] = v;
+  }
+  return out;
+}
 
-  url() {
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${proto}//${location.host}/ws`;
-  },
+const Net = {
+  online: false,
+  started: false,
+  subs: new Map(),      // path -> number of listeners (for debugging)
+  statusFns: new Set(),
+
+  // "online" follows the Realtime Database connection; Firestore reconnects on its own alongside it
   connect() {
-    if (this.ws && (this.ws.readyState === 0 || this.ws.readyState === 1)) return;
-    clearTimeout(this.retryTimer);
-    let ws;
-    try { ws = new WebSocket(this.url()); } catch (e) { this.retry(); return; }
-    this.ws = ws;
-    ws.addEventListener('open', () => {
-      this.backoff = 500;
-      this.setOnline(true);
-      // put back everything this page was listening to
-      for (const path of this.subs.keys()) this.raw({ id: this.nextId(), op: 'sub', path });
-      if (Live.code) this.raw({ id: this.nextId(), op: 'join', code: Live.code, pres: Live.pres });
-      const queued = this.outbox.splice(0);
-      for (const m of queued) this.raw(m);
+    if (this.started) return;
+    this.started = true;
+    FB.db.ref('.info/connected').on('value', (s) => {
+      const on = !!s.val();
+      if (on) Live.publish();
+      this.setOnline(on);
     });
-    ws.addEventListener('message', (e) => {
-      let msg; try { msg = JSON.parse(e.data); } catch (err) { return; }
-      if (msg.t === 'doc') return this.onDoc(msg);
-      if (msg.t === 'peers') return Live.onPeers(msg.peers || []);
-      if (msg.t === 'pong') return;
-      const p = this.pending.get(msg.id);
-      if (!p) return;
-      this.pending.delete(msg.id);
-      clearTimeout(p.timer);
-      if (msg.ok) p.resolve(msg); else p.reject({ code: msg.code || 'unavailable', message: msg.message || '' });
-    });
-    ws.addEventListener('close', () => {
-      if (this.ws !== ws) return;
-      this.ws = null;
-      this.setOnline(false);
-      this.retry();
-    });
-    ws.addEventListener('error', () => { try { ws.close(); } catch (e) {} });
-  },
-  retry() {
-    clearTimeout(this.retryTimer);
-    this.retryTimer = setTimeout(() => this.connect(), this.backoff);
-    this.backoff = Math.min(this.backoff * 1.7, 8000);
   },
   setOnline(v) {
     if (this.online === v) return;
@@ -87,88 +72,91 @@ const Net = {
     for (const fn of this.statusFns) { try { fn(v); } catch (e) { console.error(e); } }
   },
   onStatus(fn) { this.statusFns.add(fn); return () => this.statusFns.delete(fn); },
-  nextId() { return ++this.seq; },
-  raw(msg) { if (this.ws && this.ws.readyState === 1) { this.ws.send(JSON.stringify(msg)); return true; } return false; },
-  // A request that expects a reply. Made while offline, it waits for the reconnect (up to 15 s).
-  request(msg) {
-    return new Promise((resolve, reject) => {
-      const id = this.nextId();
-      const full = { ...msg, id };
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        const i = this.outbox.indexOf(full); if (i >= 0) this.outbox.splice(i, 1);
-        reject({ code: 'unavailable', message: 'no answer from the server' });
-      }, 15000);
-      this.pending.set(id, { resolve, reject, timer });
-      if (!this.raw(full)) { this.outbox.push(full); this.connect(); }
-    });
+  // Firestore holds writes made offline until it reconnects; give up waiting after 15 s like before
+  timed(p) {
+    let t;
+    const late = new Promise((_, reject) => { t = setTimeout(() => reject({ code: 'unavailable', message: 'no answer from the server' }), 15000); });
+    return Promise.race([p, late]).finally(() => clearTimeout(t));
   },
-  snap(path, exists, data) {
-    const d = exists ? clone(data) : undefined;
-    return { id: path.split('/').pop(), exists: !!exists, data: () => d };
-  },
-  onDoc(msg) {
-    const s = this.snap(msg.path, msg.exists, msg.data);
-    this.cache.set(msg.path, s);
-    const set = this.subs.get(msg.path);
-    if (set) for (const fn of [...set]) { try { fn(s); } catch (e) { console.error(e); } }
+  snap(path, s) {
+    const d = s.exists ? clone(s.data()) : undefined;
+    return { id: path.split('/').pop(), exists: !!s.exists, data: () => d };
   },
   doc(path) {
     const self = this;
+    const ref = FB.fs.doc(path);
     return {
       path,
-      async get() { const r = await self.request({ op: 'get', path }); return self.snap(path, r.exists, r.data); },
-      async set(data) { await self.request({ op: 'set', path, data }); },
-      async update(data) { await self.request({ op: 'update', path, data }); },
-      async delete() { await self.request({ op: 'delete', path }); },
+      async get() { return self.snap(path, await self.timed(ref.get())); },
+      async set(data) { await self.timed(ref.set(clone(data))); },
+      async update(data) { await self.timed(ref.update(fieldPaths(clone(data)))); },
+      async delete() {
+        // a table takes its matches with it
+        if (path.split('/').length === 2) {
+          const ms = await self.timed(ref.collection('matches').get());
+          const batch = FB.fs.batch();
+          ms.forEach((m) => batch.delete(m.ref));
+          batch.delete(ref);
+          await self.timed(batch.commit());
+        } else await self.timed(ref.delete());
+      },
       onSnapshot(fn, onError) {
-        let set = self.subs.get(path);
-        const first = !set;
-        if (first) { set = new Set(); self.subs.set(path, set); }
-        set.add(fn);
-        if (first) self.request({ op: 'sub', path }).catch((e) => onError && onError(e));
-        else if (self.cache.has(path)) { const s = self.cache.get(path); setTimeout(() => set.has(fn) && fn(s), 0); }
+        self.subs.set(path, (self.subs.get(path) || 0) + 1);
+        const off = ref.onSnapshot((s) => fn(self.snap(path, s)), (e) => onError && onError(e));
         return () => {
-          const cur = self.subs.get(path);
-          if (!cur) return;
-          cur.delete(fn);
-          if (!cur.size) { self.subs.delete(path); self.cache.delete(path); self.raw({ id: self.nextId(), op: 'unsub', path }); }
+          off();
+          const n = (self.subs.get(path) || 1) - 1;
+          if (n) self.subs.set(path, n); else self.subs.delete(path);
         };
       },
     };
   },
 };
-// keep the socket warm, and come straight back when a phone wakes up
-setInterval(() => { Net.raw({ op: 'ping' }); }, 20000);
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') Net.connect(); });
-window.addEventListener('online', () => Net.connect());
 
 // ---------- presence: who is at the table right now ----------
+// presence/{CODE}/{pushId} = {pres, at}; the server removes it when this phone disconnects
 const Live = {
   code: null, pres: {}, peers: [], listeners: new Set(),
+  ref: null, off: null,
   onChange(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); },
   fire() { for (const fn of this.listeners) { try { fn(); } catch (e) { console.error(e); } } },
   join(code) {
+    if (this.code) this.leave();
     this.code = code;
     this.peers = [];
-    Net.request({ op: 'join', code, pres: this.pres }).catch(() => {});
+    const room = FB.db.ref('presence/' + code);
+    this.ref = room.push();
+    this.publish();
+    const cb = room.on('value', (s) => this.onPeers(s.val() || {}), (e) => console.warn('presence listener', e));
+    this.off = () => room.off('value', cb);
     this.fire();
   },
+  // (re)write my whole entry; also runs on every reconnect, since the disconnect removed it
+  publish() {
+    if (!this.ref) return;
+    this.ref.onDisconnect().remove().catch(() => {});
+    this.ref.set({ pres: this.pres, at: firebase.database.ServerValue.TIMESTAMP }).catch(() => {});
+  },
   leave() {
-    if (this.code) Net.raw({ id: Net.nextId(), op: 'leave' });
+    if (this.off) this.off();
+    if (this.ref) { this.ref.onDisconnect().cancel().catch(() => {}); this.ref.remove().catch(() => {}); }
+    this.ref = this.off = null;
     this.code = null; this.peers = [];
     this.fire();
   },
   set(patch) {
     let changed = false;
+    const up = {};
     for (const k in patch) {
       if (JSON.stringify(this.pres[k]) !== JSON.stringify(patch[k])) changed = true;
       if (patch[k] === null) delete this.pres[k]; else this.pres[k] = patch[k];
+      up['pres/' + k] = patch[k];
     }
-    if (changed && this.code) Net.raw({ id: Net.nextId(), op: 'pres', patch });
+    if (changed && this.ref) { up.at = firebase.database.ServerValue.TIMESTAMP; this.ref.update(up).catch(() => {}); }
   },
-  onPeers(list) {
-    this.peers = list.map((p) => ({ id: p.id, pres: p.pres || {}, at: p.at || 0 }));
+  onPeers(all) {
+    const me = this.ref && this.ref.key;
+    this.peers = Object.entries(all).filter(([id]) => id !== me).map(([id, p]) => ({ id, pres: (p && p.pres) || {}, at: (p && p.at) || 0 }));
     this.fire();
   },
   partner() {

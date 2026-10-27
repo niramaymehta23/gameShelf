@@ -1,20 +1,18 @@
 // End-to-end: two players on two "phones" (separate browser contexts) play a full game of
-// Connect Four and a full game of Battleships against a real server, then check that a
+// Connect Four and a full game of Battleships against the Firebase emulators, then check that a
 // dropped connection and a page reload both recover.
 //
-//   npm run test:e2e                      starts its own server on a free port (in-memory data)
-//   E2E_URL=http://localhost:3000 npm run test:e2e    runs against a server you started
+//   npm run test:e2e                      starts the emulators, runs this, stops them
+//   node tests/e2e/two-players.mjs        runs against emulators you started (npm start)
 //   HEADED=1 npm run test:e2e             watch it play
 //
 // Screenshots land in tests/e2e/screens/ (git-ignored).
 // First run on a new machine: npx playwright install chromium
 
 import { createRequire } from 'node:module';
-import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs';
-import net from 'node:net';
 
 // require() (unlike import) also finds a globally installed Playwright
 const { chromium } = createRequire(import.meta.url)('playwright');
@@ -25,19 +23,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let failures = 0;
 function check(cond, label) { console.log(`${cond ? '  ok ' : '  FAIL'}  ${label}`); if (!cond) failures++; }
 
-async function freePort() {
-  return new Promise((res) => { const s = net.createServer(); s.listen(0, () => { const p = s.address().port; s.close(() => res(p)); }); });
-}
-
-async function startServer() {
-  if (process.env.E2E_URL) return { url: process.env.E2E_URL, stop() {} };
-  const port = await freePort();
-  const child = spawn(process.execPath, ['server/index.js'], { cwd: ROOT, env: { ...process.env, PORT: String(port), DATA_FILE: 'memory' }, stdio: ['ignore', 'pipe', 'inherit'] });
-  await new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error('server did not start')), 8000);
-    child.stdout.on('data', (b) => { if (String(b).includes('Our Game Shelf on')) { clearTimeout(t); resolve(); } });
-  });
-  return { url: `http://localhost:${port}`, stop() { child.kill('SIGTERM'); } };
+function startServer() {
+  return { url: process.env.E2E_URL || 'http://localhost:3000', stop() {} };
 }
 
 const snap = (p, name) => p.screenshot({ path: path.join(SHOTS, name + '.png') });
@@ -135,7 +122,9 @@ try {
     await drop(...seq[i]);
     if (i === 2) {
       // knock B's connection out mid-game; it must reconnect and keep playing
-      await b.evaluate(() => Net.ws && Net.ws.close());
+      await b.evaluate(async () => { FB.db.goOffline(); await FB.fs.disableNetwork(); });
+      await b.waitForFunction(() => !Net.online, null, { timeout: 5000 });
+      await b.evaluate(async () => { FB.db.goOnline(); await FB.fs.enableNetwork(); });
       await b.waitForFunction(() => Net.online, null, { timeout: 10000 });
       check(true, 'B reconnected after its socket dropped');
     }

@@ -4,66 +4,49 @@ Connect Four and Battleships for two, played on two phones wherever you both are
 One of you sets up a table and sends the invite; the other joins with the four-letter code.
 Rock, paper, scissors decides who goes first.
 
-A small Node server serves the app and keeps both phones in sync over a WebSocket.
-There is no build step and only one runtime dependency (`ws`).
+It's a static site on Firebase Hosting. Games are stored in Firestore and kept in sync live;
+who's at the table (and where their finger is) goes through the Realtime Database.
+There is no build step.
 
 ## Run it on your computer
 
-Needs Node 20 or newer.
+Needs Node 20 or newer and Java 11 or newer (for the Firebase emulators).
 
 ```bash
 npm install
 npm start
 ```
 
-Open http://localhost:3000. To play both sides on one computer, open a second tab at
-http://localhost:3000/?as=2.
+That runs the Firebase emulators locally, so nothing touches the real project. Open
+http://localhost:3000. To play both sides on one computer, open a second tab at
+http://localhost:3000/?as=2. Local game data is thrown away when you stop it.
 
 To try it on your phone over the same Wi-Fi, find your computer's local IP
 (on a Mac: `ipconfig getifaddr en0`) and open `http://<that-ip>:3000` on the phone.
 Sharing, copying the invite link and keeping the screen awake need HTTPS, so they work fully
-once the app is deployed.
+on the deployed site.
 
-## Put it online (so you can play from two places)
+## Put it online
 
-Any host that runs a Node process and supports WebSockets works. Game data is one JSON file,
-so give it a persistent disk if you want tables to survive restarts. Set `DATA_FILE` to a path on
-that disk.
-
-**Fly.io** (recommended: persistent volume, always on, HTTPS):
+The site runs on Firebase (pay-as-you-go Blaze plan; two people playing stays inside the free quota).
 
 ```bash
-brew install flyctl && fly auth login
-fly launch --no-deploy            # keeps the included fly.toml; choose an app name and region (lhr = London)
-fly volumes create shelf_data --size 1 --region lhr
-fly deploy
+npx firebase login
+npm run deploy        # hosting + Firestore rules + Realtime Database rules
 ```
 
-**Railway / Render:** create a web service from this repo, start command `npm start`, add a
-disk/volume mounted at `/data`, and set `DATA_FILE=/data/db.json`. On free plans without a disk,
-tables are lost when the server restarts. That's fine for playing, but the score sheet resets.
-
-**Docker:** `docker build -t game-shelf . && docker run -p 3000:3000 -v shelf:/data game-shelf`
+The project is set in `.firebaserc` and its web config in `public/js/firebase-config.js`
+(`npx firebase apps:sdkconfig web`). The config values are public by design;
+`firestore.rules` and `database.rules.json` decide what can be read and written.
 
 Then open the site on both phones and use **Add to Home Screen** (Safari share menu on iPhone,
 the ⋮ menu in Chrome on Android). It launches full-screen like an app.
 
-## Settings
-
-| Variable    | Default         | Meaning                                       |
-|-------------|-----------------|-----------------------------------------------|
-| `PORT`      | `3000`          | Port to listen on                             |
-| `HOST`      | `0.0.0.0`       | Interface to bind                             |
-| `DATA_FILE` | `data/db.json`  | Where tables are saved; `memory` keeps nothing |
-
-Tables nobody has touched for 30 days are cleared automatically.
-
 ## Tests
 
 ```bash
-npm test                          # document store
 npx playwright install chromium   # once
-npm run test:e2e                  # two phones play a full game of each
+npm test                          # starts the emulators; two phones play a full game of each
 ```
 
 See `CLAUDE.md` for how the code is organised.
