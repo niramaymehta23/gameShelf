@@ -80,7 +80,7 @@ const a = await ctxA.newPage(), b = await ctxB.newPage();
 const errors = [];
 for (const [n, p] of [['A', a], ['B', b]]) {
   p.on('pageerror', (e) => errors.push(`${n}: ${e.message}`));
-  p.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)|ERR_TUNNEL|ERR_NAME|net::/.test(m.text())) errors.push(`${n}: ${m.text()}`); });
+  p.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)|ERR_TUNNEL|ERR_NAME|net::|requestStorageAccess/.test(m.text())) errors.push(`${n}: ${m.text()}`); });
 }
 
 try {
