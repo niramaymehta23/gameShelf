@@ -11,7 +11,7 @@ const FLEET = [
 const FLEET_BY = Object.fromEntries(FLEET.map((f) => [f.id, f]));
 const ROW_L = 'ABCDEFGHIJ';
 const coord = (r, c) => ROW_L[r] + (c + 1);
-const HIT_AGAIN = false; // classic rules: turns alternate whether you hit or miss
+const HIT_AGAIN = true; // house rule: a hit earns another shot; a miss passes the turn
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 function shipCells(s) {
@@ -89,11 +89,26 @@ function posShip(el, s, cell, ins = Math.round(cell * 0.12)) {
   el.classList.toggle('v', !!s.v);
 }
 
+// White flag on a pole. The cloth waves by morphing between two outlines (SMIL, so it works on iOS too).
+const FLAG_A = 'M6.5 4C10 2.6 14 5.8 22 4.2C21.2 7.5 21.6 10.4 22.2 13.6C14.5 15.2 10.5 12 6.5 13.4Z';
+const FLAG_B = 'M6.5 4C10.5 5.6 15 2.4 21.6 5.2C21.4 8.2 21 11 21.4 14.4C15 12.2 10 15.4 6.5 13.4Z';
+const FOLD_A = 'M11 3.9C11.6 7 10.8 10 11.4 13.2', FOLD_B = 'M11.4 4.6C10.8 7.6 11.8 10.6 11 13.6';
+const STILL = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function flagSVG(phase) {
+  const wave = (a, b) => STILL ? '' : `<animate attributeName="d" dur="1.8s" begin="-${(phase * 1.8).toFixed(2)}s" repeatCount="indefinite" values="${a};${b};${a}" calcMode="spline" keySplines=".45 0 .55 1;.45 0 .55 1"/>`;
+  return `<svg viewBox="0 0 24 28" width="100%" height="100%" aria-hidden="true">`
+    + `<ellipse cx="6" cy="26.2" rx="4.6" ry="1.5" fill="rgba(24,44,72,.22)"/>`
+    + `<path d="${FLAG_A}" fill="#fbf8f0" stroke="rgba(24,44,72,.6)" stroke-width=".7" stroke-linejoin="round">${wave(FLAG_A, FLAG_B)}</path>`
+    + `<path d="${FOLD_A}" fill="none" stroke="rgba(24,44,72,.18)" stroke-width=".9" stroke-linecap="round">${wave(FOLD_A, FOLD_B)}</path>`
+    + `<line x1="6" y1="2.6" x2="6" y2="26" stroke="#5b4633" stroke-width="1.5" stroke-linecap="round"/>`
+    + `<circle cx="6" cy="2.4" r="1.3" fill="#c99a4a"/></svg>`;
+}
+
 function makeSeaGrid(cell) {
   const lab = Math.round(cell * 0.62);
   const size = cell * BS_N;
   const grid = h('div', { class: 'bs-grid' });
-  grid.style.cssText = `width:${size}px;height:${size}px;grid-template-columns:repeat(${BS_N},${cell}px);grid-template-rows:repeat(${BS_N},${cell}px)`;
+  grid.style.cssText = `--cell:${cell}px;width:${size}px;height:${size}px;grid-template-columns:repeat(${BS_N},${cell}px);grid-template-rows:repeat(${BS_N},${cell}px)`;
   const cells = [];
   for (let r = 0; r < BS_N; r++) for (let c = 0; c < BS_N; c++) { const el = h('div', { class: 'cell' }); cells.push(el); grid.append(el); }
   const top = h('div', { class: 'axis', 'aria-hidden': 'true' }, ...Array.from({ length: BS_N }, (_, i) => h('span', null, i + 1)));
@@ -111,12 +126,26 @@ function makeSeaGrid(cell) {
       return (rr >= 0 && rr < BS_N && c >= 0 && c < BS_N) ? { r: rr, c } : null;
     },
     cellAt(r, c) { return cells[r * BS_N + c]; },
+    // a hit is a red peg that keeps burning; a miss is a white flag planted in the water
     peg(r, c, hit, pop) {
-      const d = Math.round(cell * 0.42);
-      const el = h('div', { class: 'peg ' + (hit ? 'hit' : 'miss') });
-      el.style.cssText = `width:${d}px;height:${d}px;left:${c * cell + (cell - d) / 2}px;top:${r * cell + (cell - d) / 2}px`;
+      const phase = ((r * 7 + c * 3) % 10) / 10; // so neighbouring fires and flags don't move in step
+      let el;
+      if (hit) {
+        const d = Math.round(cell * 0.42);
+        el = h('div', { class: 'peg hit' }, h('i', { class: 'flame', style: `animation-delay:-${phase}s` }),
+          ...[0, 1, 2].map((i) => h('i', { class: 'smoke', style: `animation-delay:-${(phase + i) * 0.9}s;--drift:${(i - 1) * 4 + (phase - 0.5) * 6}px` })));
+        el.style.cssText = `width:${d}px;height:${d}px;left:${c * cell + (cell - d) / 2}px;top:${r * cell + (cell - d) / 2}px`;
+      } else {
+        const w = Math.round(cell * 0.8), ht = Math.round(cell * 0.9);
+        el = h('div', { class: 'peg flag' });
+        el.innerHTML = flagSVG(phase);
+        el.style.cssText = `width:${w}px;height:${ht}px;left:${c * cell + cell / 2 - w * 0.25}px;top:${r * cell + cell * 0.86 - ht * 0.93}px`;
+      }
       grid.append(el);
-      if (pop) el.animate([{ transform: 'scale(0)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }], { duration: 320, easing: 'ease-out' });
+      if (pop) {
+        if (hit) el.animate([{ transform: 'scale(0)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }], { duration: 320, easing: 'ease-out' });
+        else el.animate([{ transform: 'translateY(-40%) scale(.4)', opacity: 0 }, { transform: 'translateY(6%) scale(1.05)', opacity: 1, offset: 0.7 }, { transform: 'none' }], { duration: 380, easing: 'ease-out' });
+      }
       return el;
     },
     reticle(cls) {
@@ -417,16 +446,18 @@ function makeBattle(box) {
     if (!st) return;
     if (st.winner && rendered >= st.shots.length) return;
     const myTurn = !animating && st.turn === seat;
+    const last = st.shots[st.shots.length - 1];
+    const again = !!(last && last.hit && last.shooter === st.turn); // the last shot hit, so the same player goes again
     if (myTurn) {
-      if (aim) { fireBtn.disabled = pending; fireBtn.textContent = `Fire at ${coord(aim.r, aim.c)}`; }
+      if (aim) { fireBtn.disabled = pending; fireBtn.textContent = 'Fire'; }
       else { fireBtn.disabled = true; fireBtn.textContent = 'Pick a square to fire at'; }
-      if (!animating && !aim) status.replaceChildren(h('b', null, 'Your turn. '), 'Tap a square in their waters to aim.');
+      if (!animating && !aim) status.replaceChildren(h('b', null, again ? 'Hit! Fire again. ' : 'Your turn. '), 'Tap a square in their waters to aim.');
       theirRet.hide();
     } else if (!animating) {
       fireBtn.disabled = true; fireBtn.textContent = `${P}’s turn`;
       const p = Live.partner(); const a = p && p.pres && Array.isArray(p.pres.aim) ? p.pres.aim : null;
       if (st.turn === opp && a) { theirRet.at(a[0], a[1]); status.replaceChildren(`${P} is aiming at `, h('b', null, coord(a[0], a[1])), '…'); }
-      else { theirRet.hide(); if (st.turn === opp) status.textContent = `${P} is choosing where to fire…`; }
+      else { theirRet.hide(); if (st.turn === opp) status.textContent = again ? `${P} hit, so they fire again…` : `${P} is choosing where to fire…`; }
     }
   }
   function setAim(p) {

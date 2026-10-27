@@ -107,6 +107,9 @@ Regenerating art: `python3 tools/paint_art.py` (numpy, scipy, Pillow) writes to 
 - `connect4.js`: `pending` (my move sent, not yet confirmed) is cleared as soon as the snapshot echo (Firestore echoes local writes at once)
   arrives, so a player can aim while the last disc is still falling. Don't gate input on `animating`.
 - `battleships.js`: firing *is* gated on `animating` so shots resolve one at a time.
+  House rule `HIT_AGAIN`: a hit earns another shot, so the same player can fire many times in a row
+  (the e2e `shoot()` waits for "Tap a square" in the status, not just the button text). Hits are
+  burning pegs (CSS flame + smoke), misses are white flags (inline SVG, cloth waves via SMIL).
 - The status line has a fixed height so taps on the chart don't land on the wrong square when the
   text wraps. Keep `.status-line { min-height }`.
 - iOS: no `navigator.vibrate`; WebAudio only starts after a tap (handled in `Sound.ensure`);

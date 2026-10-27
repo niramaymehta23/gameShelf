@@ -54,15 +54,17 @@ async function drop(p, col) {
   await sleep(250);
 }
 
+// waits until this phone is ready to aim (no shot still animating), fires, and waits for the shot to land in the log
 async function shoot(p, r, c) {
-  await p.locator('.bs-bottom .btn', { hasText: 'Pick a square' }).waitFor({ timeout: 20000 });
+  await p.waitForFunction(() => /Tap a square/.test(document.querySelector('.bs-status')?.textContent || ''), null, { timeout: 20000 });
+  const n = await p.evaluate(() => bsState(G.match).shots.length);
   await p.locator('.seg button').first().click();
   await sleep(550);
   const g = await p.locator('.bs-grid.target').boundingBox();
   const cw = g.width / 10;
   const x = g.x + cw * (c + 0.5), y = g.y + cw * (r + 0.5);
   await p.mouse.click(x, y); await sleep(120); await p.mouse.click(x, y);
-  await sleep(250);
+  await p.waitForFunction((n) => bsState(G.match).shots.length > n, n, { timeout: 8000 });
 }
 
 function shipCells(fleet) {
@@ -167,13 +169,22 @@ try {
   const seatB = await state(b, 'G.seat');
   const aShips = shipCells(fleets[seatB === 'host' ? 'guest' : 'host']);
   const bOcc = new Set(shipCells(fleets[seatB]).map(([r, c]) => r * 10 + c));
-  const aMiss = []; for (let r = 0; r < 10; r++) for (let c = 0; c < 10; c++) if (!bOcc.has(r * 10 + c)) aMiss.push([r, c]);
+  const aOcc = new Set(aShips.map(([r, c]) => r * 10 + c));
+  const free = (occ) => { const out = []; for (let r = 0; r < 10; r++) for (let c = 0; c < 10; c++) if (!occ.has(r * 10 + c)) out.push([r, c]); return out; };
+  const aMiss = free(bOcc), bMiss = free(aOcc);
+  const bHit = [...bOcc][0];
   check(await state(b, 'bsState(G.match).starter === G.seat'), 'RPS winner fires first');
+  // B misses, A hits (and so goes again), A misses, then B hits every ship square in one long turn
+  await shoot(b, ...bMiss[0]);
+  await shoot(a, Math.floor(bHit / 10), bHit % 10);
+  check(await state(a, 'bsState(G.match).turn === G.seat'), 'a hit earns another shot');
+  await a.waitForFunction(() => /Hit! Fire again/.test(document.querySelector('.bs-status').textContent), null, { timeout: 8000 });
+  await shoot(a, ...aMiss[0]);
+  await b.waitForFunction(() => bsState(G.match).shots.length >= 3, null, { timeout: 8000 });
+  check(await state(b, 'bsState(G.match).turn === G.seat'), 'a miss passes the turn');
   for (let k = 0; k < aShips.length; k++) {
     await shoot(b, ...aShips[k]);
     if (k === 2) { await sleep(1200); await snap(b, '06-battle'); await snap(a, '06-battle-other-side'); }
-    if (k === aShips.length - 1) break;
-    await shoot(a, ...aMiss[k]);
   }
   await sleep(3500);
   await snap(b, '07-bs-end');
