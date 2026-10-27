@@ -2,7 +2,7 @@
   "name": "our-game-shelf",
   "version": "1.0.0",
   "private": true,
-  "description": "Two-player board games (Connect Four, Battleships) for two phones, kept in sync by Firebase.",
+  "description": "Two-player games (Connect Four, Battleships, Hues, IPOs) for two phones, kept in sync by Firebase.",
   "engines": {
     "node": ">=20"
   },

@@ -89,20 +89,20 @@ function watchMatch(id) {
   }, (e) => console.warn('match listener', e));
 }
 // ---------- opening, joining, saving and quitting games ----------
-// table.saved  {c4: matchId|null, bs: …, hu: …}  the game of each kind you can carry on later
+// table.saved  {c4: matchId|null, bs: …, hu: …, ip: …}  the game of each kind you can carry on later
 // table.notice {id, by, kind, game, match} what one of you just did, for the other phone to show:
 //   'saved' saved and quit · 'quit' quit without saving (the other decides: keep it saved, or quit too)
 //   'discarded' both quit, so it's gone · 'declined' said "not now" to a game the other opened
 // match.joined {host, guest}  who is in; whoever opens a game is, the other phone is asked to join
 // match.quit   {host, guest}  who chose to quit without saving
 const joinedBy = (m, seat) => !m.joined || m.joined[seat] !== false; // older matches have no joined map: both are in
-const hasProgress = (m) => !!m && (['rps', 'moves', 'shots', 'plays'].some((k) => Object.keys(m[k] || {}).length > 0) || !!(m.fleets && (m.fleets.host || m.fleets.guest)));
+const hasProgress = (m) => !!m && (['rps', 'moves', 'shots', 'plays', 'bids'].some((k) => Object.keys(m[k] || {}).length > 0) || !!(m.fleets && (m.fleets.host || m.fleets.guest)));
 const matchPath = (id) => `tables/${G.code}/matches/${id}`;
 const notice = (kind, m) => ({ id: Date.now().toString(36) + rid().slice(0, 4), by: G.seat, kind, game: m.game, match: m.id });
 
 async function startMatch(game) {
   const id = Date.now().toString(36) + rid().slice(0, 4);
-  const ok = await write(matchPath(id), { id, game, created: Date.now(), by: G.seat, seed: rid() + rid(), rps: {}, moves: {}, shots: {}, plays: {}, fleets: {}, joined: { [G.seat]: true, [other(G.seat)]: false }, quit: {} }, { set: true });
+  const ok = await write(matchPath(id), { id, game, created: Date.now(), by: G.seat, seed: rid() + rid(), rps: {}, moves: {}, shots: {}, plays: {}, bids: {}, fleets: {}, joined: { [G.seat]: true, [other(G.seat)]: false }, quit: {} }, { set: true });
   // a new game takes the place of a saved one of the same kind
   if (ok) await write('tables/' + G.code, { current: id, saved: { [game]: null } });
 }

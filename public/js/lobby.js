@@ -217,6 +217,17 @@ const GAMES = {
       { t: 'Empty your hand to win', d: 'If your last card starts a +2 or +4 chain, it has to finish first, and your partner still gets the turn they’re owed.' },
     ],
   },
+  ip: {
+    name: 'IPOs', cls: 'ip', art: 'art/box-ip.png',
+    howTo: [
+      { t: 'Who leads', d: 'Rock, paper, scissors, best of three. The winner leads the first quarter; the lead swaps each quarter. Four quarters, 15M each to start.', art: 'art/rps-rock.png' },
+      { t: 'The market', d: 'Ten sectors, each with a price. A company is worth its sector’s price. Tap a sector to see its companies, its bubble line and its dividend.', art: 'art/box-ip.png' },
+      { t: 'Roadshow', d: 'Four companies list each quarter. Bid on any of them at once, in secret: at least the sector’s price, no more than you have in all. Higher bid wins and pays; on a tie the poorer player wins. Each sale lifts its sector by 1.' },
+      { t: 'Trading', d: 'Take turns: play a news card, cash out a company (tap its sector; the price then drops by 1), or pass. It ends when you both pass in a row. You get three news cards a quarter and keep five at most.' },
+      { t: 'Earnings', d: 'Shorts settle. Any sector above its bubble line pops: every company in it is gone, and its price resets. Then each company you still hold pays its dividend.' },
+      { t: 'Richest wins', d: 'After the fourth quarter, your money plus the price of every company you hold. Pump what you own, push what your partner owns over the line, and cash out before it pops.' },
+    ],
+  },
 };
 
 // ---------------- how to play ----------------
@@ -258,7 +269,7 @@ Screens.shelf = () => {
         h('h1', { class: 'display h2', style: 'margin:0' }, 'Pick a game'),
       ));
       const cubby = h('div', { class: 'cubby' });
-      for (const key of ['c4', 'bs', 'hu']) {
+      for (const key of ['c4', 'bs', 'hu', 'ip']) {
         const g = GAMES[key];
         const box = h('button', { class: `gbox ${g.cls}${g.soon ? ' soon' : ''}`, 'aria-label': g.name + (g.soon ? ', coming soon' : '') },
           h('img', { class: 'wc', src: g.art, alt: '' }),
@@ -375,6 +386,7 @@ Screens.match = () => {
     else if (name === 'rps') phase = makeRPS(box, ctx);
     else if (name === 'c4') phase = makeC4(box, ctx);
     else if (name === 'hu') phase = makeHU(box, ctx);
+    else if (name === 'ip') phase = makeIP(box, ctx);
     else phase = makeBS(box, ctx);
   }
   function confirmLeave() {
