@@ -19,6 +19,10 @@
   --navy: #2c4562;
   --navy-deep: #1b2c40;
   --sage: #7f9f86;
+  /* Hues suits */
+  --lavender: #8f7cc0;
+  --orange: #df7432;
+  --royal: #2c4a8c;
   --sea-ink: rgba(24, 44, 72, .6);
   --good: #5f9d6e;
 
@@ -623,3 +627,71 @@ img { -webkit-user-drag: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* ---------- Hues ---------- */
+/* Cards are watercolour paper with a painted panel (art/hue-*.png multiplied over the paper);
+   numbers and symbols sit on the paint in paper-white. */
+.hu { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; min-height: 0; --cw: 66px; --ch: 94px; }
+.turn-chip b { margin-left: auto; font-family: var(--hand); font-size: 22px; line-height: 1; color: var(--navy); }
+.hcard {
+  position: relative; flex: none; width: var(--cw); height: var(--ch); border-radius: 7px;
+  background-color: var(--paper); background-image: url(/art/hue-navy.png), var(--t-paper);
+  background-size: 100% 100%, 300px; background-blend-mode: multiply;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .5), 0 1px 1px rgba(16, 26, 46, .3), 0 8px 14px -8px rgba(16, 26, 46, .7);
+  color: #fbf6ec; font-family: var(--display);
+  display: grid; place-items: center;
+}
+.hcard.lavender { background-image: url(/art/hue-lavender.png), var(--t-paper); }
+.hcard.orange { background-image: url(/art/hue-orange.png), var(--t-paper); }
+.hcard.sage { background-image: url(/art/hue-sage.png), var(--t-paper); }
+.hcard.wild { background-image: url(/art/hue-wild.png), var(--t-paper); }
+.hcard.back { background-image: url(/art/hue-back.png), var(--t-paper); }
+.hcard .v { font-weight: 400; font-size: calc(var(--cw) * .5); line-height: 1; text-shadow: 0 0 2px rgba(20, 28, 48, .7), 0 2px 0 rgba(20, 28, 48, .35); }
+.hcard .sym { display: block; width: 52%; filter: drop-shadow(0 1px 1px rgba(20, 28, 48, .6)); }
+.hcard .sym svg { display: block; width: 100%; height: auto; }
+.hcard.wild .sym, .hcard.wild .v { color: var(--ink); filter: none; text-shadow: 0 0 3px rgba(251, 246, 236, .9); }
+.hcard .ix { position: absolute; top: 5px; left: 7px; font-size: 13px; line-height: 1; text-shadow: 0 0 2px rgba(20, 28, 48, .7); }
+.hcard .ix.end { top: auto; left: auto; bottom: 5px; right: 7px; rotate: 180deg; }
+.hcard:not(.k-n) .ix.end { display: none; } /* the name label sits there */
+.hcard.wild .ix { color: var(--ink); text-shadow: none; }
+.hcard .nm { position: absolute; bottom: 7px; left: 0; right: 0; text-align: center; font: 800 8.5px var(--body); letter-spacing: .14em; text-transform: uppercase; text-shadow: 0 0 2px rgba(20, 28, 48, .8); }
+.hcard.wild .nm { color: var(--ink); text-shadow: 0 0 2px rgba(251, 246, 236, .9); }
+
+.hu-their { position: relative; flex: none; height: calc(var(--ch) * .62 + 4px); max-width: 100%; }
+.hu-their .hcard { position: absolute; top: 0; width: calc(var(--cw) * .62); height: calc(var(--ch) * .62); border-radius: 5px; }
+
+.hu-table { flex: none; display: flex; align-items: center; justify-content: center; gap: 22px; padding: 6px 0 2px; }
+.hu-deck { position: relative; width: var(--cw); height: var(--ch); }
+.hu-deck .hcard { position: absolute; inset: 0; }
+.hu-deck .hcard:first-child { translate: 3px 3px; rotate: 2deg; }
+.hu-deck .hcard:nth-child(2) { rotate: -1.5deg; }
+.hu-deck:active .hcard:nth-child(2) { translate: 0 -4px; }
+.hu-deck.empty .hcard { opacity: .35; }
+.hu-left { position: absolute; left: 0; right: 0; bottom: -24px; text-align: center; font: 700 18px var(--hand); color: var(--cream); text-shadow: 0 1px 0 rgba(16, 26, 46, .35); }
+.hu-pile { position: relative; width: var(--cw); height: var(--ch); scale: 1.12; }
+.hu-pile .hcard { position: absolute; inset: 0; }
+.hu-side { width: 74px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.hu-swatch { display: flex; flex-direction: column; align-items: center; gap: 0; }
+.hu-swatch i { width: 46px; height: 46px; border-radius: 48% 52% 45% 55% / 55% 45% 55% 45%; background-color: var(--paper); background-image: url(/art/hue-navy.png), var(--t-paper); background-size: 180% 180%, 200px; background-position: center; background-blend-mode: multiply; box-shadow: 0 6px 12px -6px rgba(16, 26, 46, .7); rotate: -8deg; }
+.hu-swatch.lavender i { background-image: url(/art/hue-lavender.png), var(--t-paper); }
+.hu-swatch.orange i { background-image: url(/art/hue-orange.png), var(--t-paper); }
+.hu-swatch.sage i { background-image: url(/art/hue-sage.png), var(--t-paper); }
+.hu-swatch span { font: 700 20px var(--hand); color: var(--cream); text-shadow: 0 1px 0 rgba(16, 26, 46, .35); }
+.hu-pen { font: 700 34px/1 var(--hand); color: #fbf3e6; background: var(--poppy); padding: 2px 10px 4px; border-radius: 4px; rotate: -4deg; box-shadow: 0 6px 12px -6px rgba(80, 20, 10, .7); }
+.hu-status { flex: none; width: 100%; margin-top: 14px; }
+.hu-act { flex: none; min-height: 50px; }
+.hu-hand { position: relative; flex: 1 0 auto; width: 100%; touch-action: none; }
+.hu-hand .hcard { position: absolute; transition: translate .16s var(--ease-out), filter .2s; }
+.hu-hand .hcard.dim { filter: saturate(.45) brightness(.82); }
+.hu-hand .hcard.sel { translate: 0 -16px; box-shadow: 0 0 0 3px var(--ochre), 0 14px 20px -10px rgba(16, 26, 46, .8); }
+.hu-hand .hcard.dragging { z-index: 999 !important; transition: none; box-shadow: 0 0 0 3px var(--ochre), 0 24px 30px -12px rgba(16, 26, 46, .8); }
+.hu .end-area { flex: none; }
+
+.hue-pots { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.hue-pot { min-height: 64px; display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; box-shadow: inset 0 0 0 2px rgba(35, 46, 70, .2); font: 700 24px var(--hand); color: var(--ink); }
+.hue-pot:active { transform: scale(.97); }
+.hue-pot i { width: 42px; height: 42px; flex: none; border-radius: 48% 52% 45% 55% / 55% 45% 55% 45%; background-size: 180% 180%; background-position: center; mix-blend-mode: multiply; }
+.hue-pot.lavender i { background-image: url(/art/hue-lavender.png); }
+.hue-pot.orange i { background-image: url(/art/hue-orange.png); }
+.hue-pot.navy i { background-image: url(/art/hue-navy.png); }
+.hue-pot.sage i { background-image: url(/art/hue-sage.png); }

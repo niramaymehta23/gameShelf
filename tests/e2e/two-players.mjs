@@ -1,5 +1,5 @@
 // End-to-end: two players on two "phones" (separate browser contexts) play a full game of
-// Connect Four and a full game of Battleships against the Firebase emulators, then check that a
+// Connect Four, Battleships and Hues against the Firebase emulators, then check that a
 // dropped connection and a page reload both recover.
 //
 //   npm run test:e2e                      starts the emulators, runs this, stops them
@@ -252,7 +252,79 @@ try {
   check(await state(a, '!G.table.saved.c4'), 'nothing saved after both quit');
   check(!(await a.locator('.gbox.c4 .sticker.saved').isVisible()), 'saved sticker is gone');
 
-  console.log('Chat');
+  console.log('Hues');
+  await a.locator('.gbox.hu').click(); await sheetBtn(a, 'Play Hues');
+  await sheetBtn(b, 'Join');
+  await a.locator('.howto-card').waitFor();
+  check((await a.locator('.howto-card').innerText()).includes('Match the pile'), 'Hues how-to card');
+  await snap(a, '13-hu-howto');
+  await gotIt(a); await gotIt(b);
+  await a.locator('.choices').waitFor(); await b.locator('.choices').waitFor();
+  await sleep(500);
+  await rpsRound(a, b, 'Rock', 'Scissors');
+  await rpsRound(a, b, 'Rock', 'Scissors');
+  await a.locator('.hu-hand .hcard').first().waitFor({ timeout: 12000 }); await b.locator('.hu-hand .hcard').first().waitFor({ timeout: 12000 });
+  await sleep(600);
+  check(await state(a, 'huState(G.match).turn === G.seat'), 'RPS winner plays the first card');
+  check(await state(b, 'huState(G.match).hands[G.seat].length === 7 && document.querySelectorAll(".hu-hand .hcard").length === 7 && document.querySelectorAll(".hu-their .hcard").length === 7'), 'seven cards each, partner’s face down');
+  const hands = (p) => state(p, 'JSON.stringify(huState(G.match).hands)');
+  check(await hands(a) === await hands(b), 'both phones deal the same hands from the seed');
+  await snap(a, '14-hu-start');
+  // play like a person: a card that fits (wilds last), the drawn card if it fits, else draw (or pick up a chain)
+  let huMoves = 0, dragged = false, pickedColour = false;
+  async function huMove(p) {
+    const plan = await p.evaluate(() => {
+      const s = huState(G.match);
+      const fit = s.hands[G.seat].filter((id) => hueFits(s, HUE_DECK[id])).sort((x, y) => !!HUE_KIND[HUE_DECK[x].k].wild - !!HUE_KIND[HUE_DECK[y].k].wild);
+      const id = s.drawn != null ? s.drawn : fit[0];
+      return id == null ? null : { id, wild: !!HUE_KIND[HUE_DECK[id].k].wild };
+    });
+    const n = await state(p, 'Object.keys(G.match.plays).length');
+    if (!plan) await p.locator('.hu-act').click();
+    else {
+      const card = p.locator(`.hu-hand .hcard[data-id="${plan.id}"]`);
+      if (!dragged) {
+        // the first card goes by dragging it onto the pile
+        const cb = await card.boundingBox(), pb = await p.locator('.hu-pile').boundingBox();
+        await p.mouse.move(cb.x + 12, cb.y + 20); await p.mouse.down();
+        for (let i = 1; i <= 8; i++) await p.mouse.move(cb.x + 12 + (pb.x + 20 - cb.x - 12) * i / 8, cb.y + 20 + (pb.y + 30 - cb.y - 20) * i / 8);
+        await p.mouse.up();
+        dragged = true;
+      } else {
+        await card.click({ position: { x: 12, y: 18 } });
+        await p.locator(`.hu-hand .hcard.sel[data-id="${plan.id}"]`).click({ position: { x: 12, y: 18 } });
+      }
+      if (plan.wild) {
+        await p.locator('#sheet .hue-pot').first().waitFor();
+        if (!pickedColour) { pickedColour = true; await snap(p, '15-hu-colour'); }
+        await p.locator('#sheet .hue-pot').nth(huMoves % 4).click();
+      }
+    }
+    await p.waitForFunction((n) => Object.keys(G.match.plays).length > n, n, { timeout: 10000 });
+    huMoves++;
+  }
+  const huReady = (p) => state(p, 'document.querySelector(".hu")?.dataset.ready === "1"');
+  for (let t = Date.now(); Date.now() - t < 240000;) {
+    if (await state(a, '!!huState(G.match).winner')) break;
+    const p = (await huReady(a)) ? a : (await huReady(b)) ? b : null;
+    if (!p) { await sleep(80); continue; }
+    await huMove(p);
+    if (huMoves === 1) check(dragged && await state(a, 'huState(G.match).log[0].k === "play"'), 'dragged a card onto the pile');
+    if (huMoves === 12) { await sleep(700); await snap(a, '16-hu-mid'); await snap(b, '16-hu-mid-other'); }
+  }
+  await sleep(2600);
+  const huWinner = await state(a, 'huState(G.match).winner');
+  check(!!huWinner && huWinner === await state(b, 'huState(G.match).winner'), `a winner both phones agree on, after ${huMoves} moves`);
+  const [huW, huL] = huWinner === await state(a, 'G.seat') ? [a, b] : [b, a];
+  await snap(huW, '17-hu-end');
+  check((await huW.locator('#sheet').innerText()).includes('You win'), 'winner sees the win card');
+  check((await huL.locator('#sheet').innerText()).includes('played their last card'), 'loser sees who went out');
+  await sheetBtn(a, 'Back to the shelf');
+  await a.locator('.gbox').first().waitFor({ timeout: 8000 }); await b.locator('.gbox').first().waitFor({ timeout: 8000 });
+  await sleep(800);
+  check(/Hues [01] [01]/.test((await a.locator('.score-grid').innerText()).replace(/\s+/g, ' ')), 'score sheet has a Hues row with the win');
+  check(!(await a.locator('.gbox.gw').count()), 'Guess Who? is off the shelf');
+
   await a.locator('#chatBtn').click();
   await snap(a, '11-chat-sheet');
   await a.locator('.chat-emoji button[aria-label="Laughing"]').click();

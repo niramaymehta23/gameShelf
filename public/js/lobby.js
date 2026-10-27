@@ -206,7 +206,16 @@ const GAMES = {
       { t: 'A hit goes again', d: 'A hit burns and earns another shot. A miss plants a white flag and passes the turn. Sink every ship to win.' },
     ],
   },
-  gw: { name: 'Guess Who?', cls: 'gw', soon: true, art: 'art/box-gw.png' },
+  hu: {
+    name: 'Hues', cls: 'hu', art: 'art/box-hu.png',
+    howTo: [
+      { t: 'Who goes first', d: 'Rock, paper, scissors, best of three. The winner plays the first card. You each get seven.', art: 'art/rps-rock.png' },
+      { t: 'Match the pile', d: 'Play a card in the colour on the pile, or with the same number or symbol. Drag it onto the pile, or tap it twice.', art: 'art/hue-orange.png' },
+      { t: 'Stuck?', d: 'Draw a card. If it fits you can play it straight away; if not, keep it and it’s your partner’s turn.' },
+      { t: 'The specials', d: 'Again: go again. Blend: pick the colour. Trade: swap hands, then pick the colour. Splash +2 and Flood +4 (pick the colour) stack: +2 on +2, +4 on +4, or a +2 in the colour a +4 picked. Whoever can’t stack picks up the lot, then still takes their turn.', art: 'art/hue-wild.png' },
+      { t: 'Empty your hand to win', d: 'If your last card starts a +2 or +4 chain, it has to finish first, and your partner still gets the turn they’re owed.' },
+    ],
+  },
 };
 
 // ---------------- how to play ----------------
@@ -248,7 +257,7 @@ Screens.shelf = () => {
         h('h1', { class: 'display h2', style: 'margin:0' }, 'Pick a game'),
       ));
       const cubby = h('div', { class: 'cubby' });
-      for (const key of ['c4', 'bs', 'gw']) {
+      for (const key of ['c4', 'bs', 'hu']) {
         const g = GAMES[key];
         const box = h('button', { class: `gbox ${g.cls}${g.soon ? ' soon' : ''}`, 'aria-label': g.name + (g.soon ? ', coming soon' : '') },
           h('img', { class: 'wc', src: g.art, alt: '' }),
@@ -301,7 +310,7 @@ Screens.shelf = () => {
   function pick(key, box) {
     const g = GAMES[key];
     Sound.tap(); vibrate(8);
-    if (g.soon) { box.classList.add('pulled'); setTimeout(() => box.classList.remove('pulled'), 400); toast('Guess Who? is still on order'); return; }
+    if (g.soon) { box.classList.add('pulled'); setTimeout(() => box.classList.remove('pulled'), 400); toast(`${g.name} is still on order`); return; }
     box.classList.add('pulled');
     const saved = savedId(key);
     const body = h('div', { class: 'sheet-body' },
@@ -364,6 +373,7 @@ Screens.match = () => {
     if (name === 'howto') phase = makeHowTo(box, ctx, G.match.game);
     else if (name === 'rps') phase = makeRPS(box, ctx);
     else if (name === 'c4') phase = makeC4(box, ctx);
+    else if (name === 'hu') phase = makeHU(box, ctx);
     else phase = makeBS(box, ctx);
   }
   function confirmLeave() {

@@ -385,3 +385,73 @@ def hero(W=760, H=420):
     save_rgba(s.rgba(), 'hero.png')
 
 hero()
+
+# ================= Hues (the card game) =================
+# One painted panel per suit colour (the number sits on it in the page), a four-colour panel for
+# the wild cards, the card back and the box. Cards are 68x96 on screen, so these are 136x192.
+HUE = {'lavender': (150, 126, 196), 'orange': (226, 118, 48), 'navy': (40, 70, 140), 'sage': (104, 146, 104)}
+CW, CH = 136, 192
+
+def rot_rect(cx, cy, w, h, ang):
+    c, s = math.cos(ang), math.sin(ang)
+    return [(cx + x * c - y * s, cy + x * s + y * c) for x, y in ((-w / 2, -h / 2), (w / 2, -h / 2), (w / 2, h / 2), (-w / 2, h / 2))]
+
+def splatter(s, color, n, box, rmax=4):
+    x0, y0, x1, y1 = box
+    for _ in range(n):
+        s.wash(disk(s.w, s.h, rng.uniform(x0, x1), rng.uniform(y0, y1), rng.uniform(1.5, rmax)), color, strength=0.8, rough=0.05, blur=0.8)
+
+def hue_face(name, color):
+    s = Sheet(CW, CH)
+    s.wash(rrect(CW, CH, 8, 8, CW - 8, CH - 8, 10), color, strength=0.88, edge=0.9, bloom=0.4, gran=0.45, rough=0.14)
+    s.wash(ellipse(CW, CH, CW / 2, CH / 2, 40, 54, 0.35), tuple(int(v * 0.72) for v in color), strength=0.45, edge=1.1, rough=0.18, blur=2)
+    splatter(s, color, 7, (6, 6, CW - 6, CH - 6))
+    save_rgba(s.rgba(), f'hue-{name}.png')
+
+def hue_wild():
+    s = Sheet(CW, CH)
+    cols = list(HUE.values())
+    for k, (cx, cy) in enumerate(((40, 52), (96, 52), (40, 140), (96, 140))):
+        s.wash(ellipse(CW, CH, cx, cy, 40, 52, 0.5 + k) & rrect(CW, CH, 9, 9, CW - 9, CH - 9, 10), cols[k], strength=0.8, edge=1.0, bloom=0.5, gran=0.4, rough=0.16, blur=2)
+    s.ink([rrect_path(8, 8, CW - 8, CH - 8)], width=1.6, alpha=0.35)
+    save_rgba(s.rgba(), 'hue-wild.png')
+
+def rrect_path(x0, y0, x1, y1):
+    return [(x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)]
+
+def hue_back():
+    s = Sheet(CW, CH)
+    cx, cy = CW / 2, CH / 2
+    spots = [(cx + 26 * math.cos(a), cy + 26 * math.sin(a)) for a in (-math.pi / 2, 0, math.pi / 2, math.pi)]
+    reserve = disk(CW, CH, cx, cy, 9)
+    for x, y in spots:
+        reserve |= disk(CW, CH, x, y, 17)
+    s.wash(rrect(CW, CH, 6, 6, CW - 6, CH - 6, 10) & ~reserve, (34, 58, 112), strength=0.92, bloom=0.45, gran=0.5, rough=0.08)
+    for (x, y), col in zip(spots, HUE.values()):
+        s.wash(disk(CW, CH, x, y, 15), col, strength=0.8, edge=1.1, rough=0.12)
+    s.ink([rrect_path(14, 14, CW - 14, CH - 14)], width=1.6, color=(236, 226, 206), alpha=0.5)
+    save_rgba(s.rgba(), 'hue-back.png')
+
+def box_hu(W=360, H=480):
+    s = Sheet(W, H)
+    cards = [(130, 250, -0.32, 'sage'), (180, 232, -0.05, 'orange'), (232, 250, 0.26, 'lavender')]
+    reserve = np.zeros((H, W), bool)
+    for cx, cy, a, _ in cards:
+        reserve |= poly(W, H, rot_rect(cx, cy, 128, 182, a))
+    s.wash(rrect(W, H, 8, 8, W - 8, H - 8, 10) & ~reserve, (40, 70, 140), strength=0.92, bloom=0.4, edge=0.7, gran=0.3, rough=0.05)
+    for i, (cx, cy, a, name) in enumerate(cards):
+        outline = rot_rect(cx, cy, 128, 182, a)
+        inner = poly(W, H, rot_rect(cx, cy, 110, 164, a))
+        for j in range(i + 1, len(cards)):  # later cards lie on top
+            inner &= ~poly(W, H, rot_rect(*cards[j][:2], 128, 182, cards[j][2]))
+        s.wash(inner, HUE[name], strength=0.88, edge=1.0, rough=0.1)
+        if i == len(cards) - 1:
+            s.ink([outline + [outline[0]]], width=2.2)
+            s.ink([circle_path(cx, cy, 30, 40, 0.6, 5.6)], width=4, color=(244, 236, 220), alpha=0.9)
+    splatter(s, HUE['orange'], 6, (40, 380, 320, 450), 5)
+    splatter(s, HUE['lavender'], 6, (40, 40, 320, 110), 5)
+    save_rgba(s.rgba(), 'box-hu.png')
+
+for k, v in HUE.items():
+    hue_face(k, v)
+hue_wild(); hue_back(); box_hu()
