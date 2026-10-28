@@ -1,21 +1,16 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import vm from 'node:vm';
+import { load } from './load.mjs';
 // Golden replay test: builds a few hundred match documents with seeded play (valid moves, junk and
 // out-of-turn ones mixed in) and checks that rpsState, c4State, bsState, huState and qfState still
 // return exactly what they did when tests/unit/replay-golden.json was written.
 //   node tests/unit/replay.mjs           compare against the golden file
 //   node tests/unit/replay.mjs --write   rewrite it (only when a replay change is intended)
 const GOLDEN = 'tests/unit/replay-golden.json';
-const ctx = vm.createContext({
-  clone: (x) => JSON.parse(JSON.stringify(x)), sortedKeys: (o) => Object.keys(o || {}).sort(),
-  other: (s) => (s === 'host' ? 'guest' : 'host'), pad3: (n) => String(n).padStart(3, '0'),
-  matchMedia: () => ({ matches: false }),
-});
-for (const f of ['rps.js', 'connect4.js', 'battleships.js', 'hues.js', 'words.js', 'quickfire.js']) vm.runInContext(fs.readFileSync('public/js/' + f, 'utf8'), ctx);
-vm.runInContext('globalThis.R={rpsState,c4State,bsState,huState,qfState,hueApply,hueFits,HUE_DECK,FLEET,qfFits}', ctx);
-const R = ctx.R;
+const R = load(['rps.js', 'connect4.js', 'battleships.js', 'hues.js', 'words.js', 'quickfire.js'],
+  ['rpsState', 'c4State', 'bsState', 'huState', 'qfState', 'hueApply', 'hueFits', 'HUE_DECK', 'FLEET', 'qfFits'],
+  { matchMedia: () => ({ matches: false }) });
 
 // the test's own generator, so the documents never depend on the code under test
 function rng(seed) {
