@@ -39,7 +39,15 @@ const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)
 const other = (s) => (s === 'host' ? 'guest' : 'host');
 const pad3 = (n) => String(n).padStart(3, '0');
 const rid = () => Math.random().toString(36).slice(2, 10);
+const newId = () => Date.now().toString(36) + rid().slice(0, 4); // match ids and notice ids
 const sortedKeys = (o) => Object.keys(o || {}).sort();
+const firstName = (name) => String(name || '').split(' ')[0];
+// A quick side-to-side shake for something refused. prop is the property it moves: 'translate'
+// (composes with an element's own transform) or 'transform'.
+function shake(el, px = 6, ms = 260, prop = 'translate') {
+  const at = (x) => (prop === 'translate' ? { translate: x ? `${x}px 0` : '0 0' } : { transform: x ? `translateX(${x}px)` : 'translateX(0)' });
+  return el.animate([at(0), at(-px), at(px), at(0)], { duration: ms });
+}
 function vibrate(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
 const ICON = {
   back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>',

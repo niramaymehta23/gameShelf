@@ -376,6 +376,8 @@ img { -webkit-user-drag: none; }
 /* ---------- match chrome ---------- */
 .match { gap: 10px; padding-top: 2px; }
 .phase { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+/* each phase of a game (how to play, RPS, the game itself) comes in like a screen */
+.phase-box { flex: 1; display: flex; flex-direction: column; min-height: 0; animation: screenIn .4s var(--ease-out) both; }
 .status-line { font-family: var(--hand); font-size: 24px; line-height: 1.05; color: #fbf6ec; text-align: center; min-height: 2.1em; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; column-gap: .25em; text-shadow: 0 1px 0 rgba(16, 26, 46, .3); text-wrap: balance; }
 .status-line b { color: #f6c66e; font-weight: 700; }
 .bs-status, .c4-status { flex: none; }

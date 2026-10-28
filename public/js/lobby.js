@@ -160,7 +160,7 @@ Screens.seat = () => {
         const busy = Live.seatOnline(s);
         return h('button', {
           class: 'btn btn-felt', disabled: busy || null,
-          onclick: () => { G.claimed = true; write('tables/' + G.code, { [s]: { dev: G.dev, name: t[s].name } }); },
+          onclick: () => { G.claimed = true; write(tablePath(), { [s]: { dev: G.dev, name: t[s].name } }); },
         }, busy ? `${t[s].name} is playing right now` : `I’m ${t[s].name}`);
       }),
       h('button', { class: 'back-link', onclick: () => { closeTable(); route(); } }, 'Leave this table'),
@@ -211,6 +211,7 @@ Screens.waiting = () => ({
 const GAMES = {
   c4: {
     name: 'Connect Four', cls: 'c4', art: 'art/box-c4.png',
+    starter: { line: (me, P) => (me ? 'You’re red, and red drops first.' : `You’re yellow. ${P} is red and drops first.`), go: 'To the board' },
     howTo: [
       { t: 'Who goes first', d: 'Rock, paper, scissors, best of three. The winner is red and drops first.', art: 'art/rps-rock.png' },
       { t: 'Drop a disc', d: 'Drag along the top of the board and let go, or tap a column. It falls to the lowest space.', art: 'art/disc-red.png' },
@@ -219,6 +220,7 @@ const GAMES = {
   },
   bs: {
     name: 'Battleships', cls: 'bs', art: 'art/box-bs.png',
+    starter: { line: (me, P) => (me ? 'Hide your fleet, then you fire the first shot.' : `Hide your fleet, then ${P} fires the first shot.`), go: 'Place my ships' },
     howTo: [
       { t: 'Who goes first', d: 'Rock, paper, scissors, best of three. The winner fires first.', art: 'art/rps-rock.png' },
       { t: 'Hide your fleet', d: 'Drag your five ships onto your chart. Pick one and press Turn, or Shuffle them all. Your partner can’t see them.', art: 'art/box-bs.png' },
@@ -228,6 +230,7 @@ const GAMES = {
   },
   hu: {
     name: 'Hues', cls: 'hu', art: 'art/box-hu.png',
+    starter: { line: (me, P) => (me ? 'Seven cards each, and you play the first one.' : `Seven cards each, and ${P} plays the first one.`), go: 'Deal the cards' },
     howTo: [
       { t: 'Who goes first', d: 'Rock, paper, scissors, best of three. The winner plays the first card. You each get seven.', art: 'art/rps-rock.png' },
       { t: 'Match the pile', d: 'Play a card in the colour on the pile, or with the same number or symbol. Drag it onto the pile, or tap it twice. Got two of the same number? Tap both, then the pile, to put them down together.', art: 'art/hue-orange.png' },
@@ -239,6 +242,7 @@ const GAMES = {
   },
   qf: {
     name: 'Quickfire', cls: 'qf', art: 'art/box-qf.png',
+    starter: { line: (me, P) => (me ? 'You set up the race: Words, Sums or both.' : `${P} sets up the race: Words, Sums or both.`), go: 'On your marks' },
     howTo: [
       { t: 'Who sets it up', d: 'Rock, paper, scissors, best of three. The winner picks Mixed (first to 10), Words or Sums (first to 5), the word length, first or last letter, and add, subtract or multiply. That stays for the whole game.', art: 'art/rps-rock.png' },
       { t: 'Words', d: 'You each pick a letter in secret: the winner’s goes on their end of the word, yours on the other. Then S _ _ _ T appears. Type the middle letters of any real word.' },
@@ -323,8 +327,7 @@ Screens.shelf = () => {
   };
   function paintScore() {
     const res = (G.table && G.table.results) || {};
-    const short = (n) => String(n || '').split(' ')[0];
-    const cells = [h('span'), h('span', { class: 'hd n', title: myName() }, short(myName())), h('span', { class: 'hd n', title: partnerName() }, short(partnerName()))];
+    const cells = [h('span'), h('span', { class: 'hd n', title: myName() }, firstName(myName())), h('span', { class: 'hd n', title: partnerName() }, firstName(partnerName()))];
     for (const key of Object.keys(GAMES).filter((k) => !GAMES[k].soon)) {
       let me = 0, them = 0;
       for (const id in res) { const r = res[id]; if (r.g !== key) continue; if (r.w === G.seat) me++; else if (r.w === other(G.seat)) them++; }
@@ -397,7 +400,7 @@ Screens.match = () => {
     phase && phase.destroy && phase.destroy();
     phaseEl.replaceChildren();
     phaseName = name;
-    const box = h('div', { style: 'flex:1;display:flex;flex-direction:column;min-height:0;animation:screenIn .4s var(--ease-out) both' });
+    const box = h('div', { class: 'phase-box' });
     phaseEl.append(box);
     const ctx = {
       onIntroDone: () => { introDone = true; Pref.set('intro:' + G.match.id, '1'); S.update(); },
@@ -440,6 +443,10 @@ function endSheet(m, { title, sub, body, good, art }) {
       { label: 'Back to the shelf', kind: 'ghost', onClick: backToShelf },
     ],
   });
+}
+// the end-of-game card, `ms` after the last move landed, if this game is still on screen
+function endSheetSoon(m, isDead, ms, opts) {
+  setTimeout(() => { if (!isDead() && G.matchId === m.id) endSheet(m, opts); }, ms);
 }
 function endBar(m) {
   return h('div', { class: 'btn-row', style: 'width:100%' },
