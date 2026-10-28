@@ -35,6 +35,7 @@ const TableHistory = {
   },
 };
 
+const UNREACHABLE = 'Couldn’t reach the table. Check your connection and try again.';
 async function write(path, patch, { set = false } = {}) {
   try {
     const ref = Net.doc(path);
@@ -42,10 +43,17 @@ async function write(path, patch, { set = false } = {}) {
     return true;
   } catch (e) {
     console.warn('write failed', path, e);
-    if (e && e.code === 'unavailable') toast('Couldn’t reach the table. Check your connection and try again.');
+    if (e && e.code === 'unavailable') toast(UNREACHABLE);
     else toast('Couldn’t save that. Try again.');
     return false;
   }
+}
+// What to say when a transaction fails: our own refusals (plain Errors) say why; Firebase's errors
+// (they have a code, like a timeout's 'unavailable') get the same words as write().
+function writeError(e, fallback) {
+  if (e && e.code === 'unavailable') return UNREACHABLE;
+  if (e && e.code) return fallback;
+  return (e && e.message) || fallback;
 }
 
 const tablePath = () => 'tables/' + G.code;
@@ -61,7 +69,7 @@ async function chooseOnce(m, field, value, taken, failed) {
       if (!snap.exists || rpsState(latest).starter !== G.seat || latest[field]) throw Error(taken);
       tx.update(ref, { [field]: value });
     }));
-  } catch (e) { toast(e.message || failed); }
+  } catch (e) { toast(writeError(e, failed)); }
 }
 
 function openTable(code, { joining = false } = {}) {
@@ -161,15 +169,16 @@ async function declineMatch(m) {
   G.leftByMe = true;
   await write(tablePath(), { current: null, notice: notice('declined', m) });
 }
+// Each writes the match first, then the table; if the first write fails, nothing more is written.
 async function saveAndQuit(m) {
   G.leftByMe = true;
-  await write(matchPath(m.id), { quit: {} });
+  if (!(await write(matchPath(m.id), { quit: {} }))) { G.leftByMe = false; return; }
   if (await write(tablePath(), { current: null, saved: { [m.game]: m.id }, notice: notice('saved', m) })) toast('Saved. It’s on the shelf for next time.');
 }
 async function quitGame(m) {
   G.leftByMe = true;
   const both = !!(m.quit && m.quit[other(G.seat)]);
-  await write(matchPath(m.id), { quit: { [G.seat]: true } });
+  if (!(await write(matchPath(m.id), { quit: { [G.seat]: true } }))) { G.leftByMe = false; return; }
   // one quit only pauses the game: it stays saved until the other one quits too
   const ok = await write(tablePath(), both
     ? { current: null, saved: { [m.game]: null }, notice: notice('discarded', m) }
