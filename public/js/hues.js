@@ -78,6 +78,21 @@ function hueFitsAll(st, ids) {
 }
 const hueSpecial = (id) => HUE_DECK[id].k !== 'n';
 
+// Seven cards each, one at a time, starting with the player who doesn't go first. A hand that
+// already holds HUE_OPEN_SPECIALS action cards gets the next number card instead; the pile starts on a number.
+function hueDeal(st) {
+  for (let i = 0; i < HUE_HAND; i++) {
+    for (const s of [other(st.starter), st.starter]) {
+      let j = st.pile.length - 1;
+      if (st.hands[s].filter(hueSpecial).length >= HUE_OPEN_SPECIALS) while (hueSpecial(st.pile[j])) j--;
+      st.hands[s].push(st.pile.splice(j, 1)[0]);
+    }
+  }
+  const first = st.pile.findLastIndex((id) => !hueSpecial(id));
+  st.discard.push(st.pile.splice(first, 1)[0]);
+  st.colour = HUE_DECK[st.discard[0]].c;
+}
+
 // Replays the log (the first `limit` moves that counted). Nothing here is ever stored.
 //   paid   the player to move has just picked up a chain, so may pass without drawing
 //   said   called Hues · owes: down to one card without calling it, so can be called out until their next turn
@@ -90,16 +105,7 @@ function huLegacyState(m, limit = Infinity) {
     grace: null, firstOut: null, winner: null, log: [],
   };
   if (!starter) return st;
-  for (let i = 0; i < HUE_HAND; i++) {
-    for (const s of [other(starter), starter]) {
-      let j = st.pile.length - 1;
-      if (st.hands[s].filter(hueSpecial).length >= HUE_OPEN_SPECIALS) while (hueSpecial(st.pile[j])) j--;
-      st.hands[s].push(st.pile.splice(j, 1)[0]);
-    }
-  }
-  const first = st.pile.findLastIndex((id) => !hueSpecial(id)); // the pile starts on a number card
-  st.discard.push(st.pile.splice(first, 1)[0]);
-  st.colour = HUE_DECK[st.discard[0]].c;
+  hueDeal(st);
   const draw = (n) => {
     const ids = [];
     for (let i = 0; i < n; i++) {
@@ -186,114 +192,142 @@ function huLegacyState(m, limit = Infinity) {
 }
 
 // Version 2: pure command application. Only commands/options are stored in Firebase.
+// plays keys: version 1 (saved games) four digits plus the seat, p0042h; version 2 five digits, p00042
+const hueKeyV1 = (n, seat) => 'p' + String(n).padStart(4, '0') + seat[0];
+const hueKeyV2 = (n) => 'p' + String(n).padStart(5, '0');
 function hueInitial(m) {
   const starter = rpsState(m).starter, rules = m.hueRules || 'custom', rnd = hueRng(m.seed || m.id);
-  const ids = HUE_DECK.map(c => c.id);
-  const s = { version: 2, rules, starter, hands: {host:[],guest:[]}, pile: hueShuffle(ids, rnd), discard: [], colour:0, turn:starter,
-    penalty:0, drawn:null, paid:false, said:{host:false,guest:false}, owes:{host:false,guest:false}, oneKey:{host:null,guest:null},
-    callWindow:null, shuffles:{host:0,guest:0}, firstOut:null, grace:null, winner:null, log:[], seed:m.seed || m.id, reshuffles:0 };
-  if (!starter) return s;
-  for (let i=0;i<HUE_HAND;i++) for (const seat of [other(starter),starter]) {
-    let j=s.pile.length-1;
-    if (s.hands[seat].filter(hueSpecial).length>=HUE_OPEN_SPECIALS) while (hueSpecial(s.pile[j])) j--;
-    s.hands[seat].push(s.pile.splice(j,1)[0]);
-  }
-  const j=s.pile.findLastIndex(id=>!hueSpecial(id));s.discard.push(s.pile.splice(j,1)[0]);s.colour=HUE_DECK[s.discard[0]].c;
+  const ids = HUE_DECK.map((c) => c.id);
+  const s = {
+    version: 2, rules, starter, hands: { host: [], guest: [] }, pile: hueShuffle(ids, rnd), discard: [], colour: 0, turn: starter,
+    penalty: 0, drawn: null, paid: false, said: { host: false, guest: false }, owes: { host: false, guest: false }, oneKey: { host: null, guest: null },
+    callWindow: null, shuffles: { host: 0, guest: 0 }, firstOut: null, grace: null, winner: null, log: [], seed: m.seed || m.id, reshuffles: 0,
+  };
+  if (s.starter) hueDeal(s);
   return s;
 }
 function hueCanSay(s, seat) { return !!(s && !s.winner && s.hands[seat].length === 1 && !s.said[seat]); }
+// the other player is on one card without calling Hues, and this phone hasn't opened the call-out window for it yet
 function hueNeedsNotice(s, seat) {
-  const victim=other(seat);
-  return !!(s && !s.winner && s.turn===seat && s.owes[victim] && !s.said[victim] && s.hands[victim].length===1 && s.callWindow?.one!==s.oneKey[victim]);
+  const victim = other(seat);
+  return !!(s && !s.winner && s.turn === seat && s.owes[victim] && !s.said[victim] && s.hands[victim].length === 1 && s.callWindow?.one !== s.oneKey[victim]);
 }
-function hueCanCall(s, seat, now=Infinity) {
-  const victim=other(seat),window=s?.callWindow;
-  return !!(s && !s.winner && s.turn===seat && s.owes[victim] && !s.said[victim] && s.hands[victim].length===1 && window?.by===seat && window.one===s.oneKey[victim] && now>=window.until);
+function hueCanCall(s, seat, now = Infinity) {
+  const victim = other(seat), window = s?.callWindow;
+  return !!(s && !s.winner && s.turn === seat && s.owes[victim] && !s.said[victim] && s.hands[victim].length === 1
+    && window?.by === seat && window.one === s.oneKey[victim] && now >= window.until);
 }
 function hueApply(state, mv, key) {
-  const s=clone(state), by=mv?.by, fail=text=>{throw Error(text);};
-  if (!['host','guest'].includes(by) || s.winner) fail('This move is not available.');
-  const opp=other(by), hand=s.hands[by];
-  const draw=(seat,n)=>{
-    const out=[];
-    for(let i=0;i<n;i++) {
-      if(!s.pile.length&&s.discard.length>1) s.pile=hueShuffle(s.discard.splice(0,s.discard.length-1),hueRng(s.seed+':recycle:'+s.reshuffles++));
-      if(!s.pile.length)break;out.push(s.pile.pop());
+  const s = clone(state), by = mv?.by;
+  const fail = (text) => { throw Error(text); };
+  if (!['host', 'guest'].includes(by) || s.winner) fail('This move is not available.');
+  const opp = other(by), hand = s.hands[by];
+  // a hand that changes loses its Hues call, and any call-out window against it
+  const invalidate = (seat) => {
+    s.said[seat] = false; s.owes[seat] = false; s.oneKey[seat] = null;
+    if (s.callWindow?.who === seat) s.callWindow = null;
+  };
+  const draw = (seat, n) => {
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      if (!s.pile.length && s.discard.length > 1) s.pile = hueShuffle(s.discard.splice(0, s.discard.length - 1), hueRng(s.seed + ':recycle:' + s.reshuffles++));
+      if (!s.pile.length) break;
+      out.push(s.pile.pop());
     }
-    s.hands[seat].push(...out);s.said[seat]=false;s.owes[seat]=false;s.oneKey[seat]=null;
-    if(s.callWindow?.who===seat)s.callWindow=null;
+    s.hands[seat].push(...out);
+    invalidate(seat);
     return out;
   };
-  const invalidate=seat=>{s.said[seat]=false;s.owes[seat]=false;s.oneKey[seat]=null;if(s.callWindow?.who===seat)s.callWindow=null;};
-  const one=seat=>{
-    if(s.hands[seat].length===1&&!s.said[seat]){s.owes[seat]=true;s.oneKey[seat]=key;}
-    else if(s.hands[seat].length!==1)invalidate(seat);
+  // down to one card without calling Hues: it can be called out, and this move's key marks the moment
+  const one = (seat) => {
+    if (s.hands[seat].length === 1 && !s.said[seat]) { s.owes[seat] = true; s.oneKey[seat] = key; }
+    else if (s.hands[seat].length !== 1) invalidate(seat);
   };
-  const time=()=>{const at = typeof mv.at === 'number' ? mv.at : mv.at && Number(mv.at.seconds)*1000 + (Number(mv.at.nanoseconds)||0)/1e6; if(!Number.isFinite(at))fail('A response needs a timestamp.');return at;};
+  // The next player's ordinary play/draw closes any unchallenged declaration.
+  const closeMissed = () => { if (s.owes[opp]) { s.owes[opp] = false; s.oneKey[opp] = null; s.callWindow = null; } };
+  const time = () => {
+    const at = typeof mv.at === 'number' ? mv.at : mv.at && Number(mv.at.seconds) * 1000 + (Number(mv.at.nanoseconds) || 0) / 1e6;
+    if (!Number.isFinite(at)) fail('A response needs a timestamp.');
+    return at;
+  };
   let ev;
-  if(mv.k==='hues') {
-    if(!hueCanSay(s,by))fail('Call Hues only when you have exactly one card.');
-    s.said[by]=true;s.owes[by]=false;if(s.callWindow?.who===by)s.callWindow=null;ev={by,k:'hues'};
-  } else if(mv.k==='notice') {
-    if(!hueNeedsNotice(s,by)||mv.one!==s.oneKey[opp])fail('There is no new one-card turn to notice.');
-    s.callWindow={by,who:opp,one:mv.one,until:time()+HUE_CALLOUT_MS};ev={by,k:'notice',who:opp,until:s.callWindow.until};
-  } else if(mv.k==='callout') {
-    if(!hueCanCall(s,by,time())||mv.one!==s.oneKey[opp])fail('Call out unlocks two seconds after your screen shows the new turn.');
-    const ids=draw(opp,HUE_CALLOUT);ev={by,k:'callout',who:opp,ids};
-  } else if(mv.k==='shuffle') {
-    if(s.rules!=='custom'||s.shuffles[by]>=HUE_SHUFFLES||s.drawn!=null||s.pile.length<2)fail('No shuffle is available.');
-    s.shuffles[by]++;s.pile=hueShuffle(s.pile,hueRng(s.seed+':shuffle:'+by+':'+s.shuffles[by]));ev={by,k:'shuffle'};
+  if (mv.k === 'hues') {
+    if (!hueCanSay(s, by)) fail('Call Hues only when you have exactly one card.');
+    s.said[by] = true; s.owes[by] = false;
+    if (s.callWindow?.who === by) s.callWindow = null;
+    ev = { by, k: 'hues' };
+  } else if (mv.k === 'notice') {
+    if (!hueNeedsNotice(s, by) || mv.one !== s.oneKey[opp]) fail('There is no new one-card turn to notice.');
+    s.callWindow = { by, who: opp, one: mv.one, until: time() + HUE_CALLOUT_MS };
+    ev = { by, k: 'notice', who: opp, until: s.callWindow.until };
+  } else if (mv.k === 'callout') {
+    if (!hueCanCall(s, by, time()) || mv.one !== s.oneKey[opp]) fail('Call out unlocks two seconds after your screen shows the new turn.');
+    const ids = draw(opp, HUE_CALLOUT);
+    ev = { by, k: 'callout', who: opp, ids };
+  } else if (mv.k === 'shuffle') {
+    if (s.rules !== 'custom' || s.shuffles[by] >= HUE_SHUFFLES || s.drawn != null || s.pile.length < 2) fail('No shuffle is available.');
+    s.shuffles[by]++;
+    s.pile = hueShuffle(s.pile, hueRng(s.seed + ':shuffle:' + by + ':' + s.shuffles[by]));
+    ev = { by, k: 'shuffle' };
   } else {
-    if(by!==s.turn)fail('It is not your turn.');
-    if(mv.k==='play') {
-      const ids=mv.ids;
-      if(!Array.isArray(ids)||!ids.every(id=>hand.includes(id))||!hueFitsAll(s,ids))fail('Those cards cannot be played now.');
-      const last=HUE_DECK[ids.at(-1)], kind=HUE_KIND[last.k];
-      if(kind.wild&&(!Number.isInteger(mv.col)||mv.col<0||mv.col>3))fail('Choose the next colour.');
+    if (by !== s.turn) fail('It is not your turn.');
+    if (mv.k === 'play') {
+      const ids = mv.ids;
+      if (!Array.isArray(ids) || !ids.every((id) => hand.includes(id)) || !hueFitsAll(s, ids)) fail('Those cards cannot be played now.');
+      const last = HUE_DECK[ids.at(-1)], kind = HUE_KIND[last.k];
+      if (kind.wild && (!Number.isInteger(mv.col) || mv.col < 0 || mv.col > 3)) fail('Choose the next colour.');
       invalidate(by);
-      for(const id of ids){hand.splice(hand.indexOf(id),1);s.discard.push(id);}
-      s.colour=kind.wild?mv.col:last.c;s.drawn=null;s.paid=false;s.penalty+=kind.pen||0;
-      if(last.k==='trade') {
-        [s.hands.host,s.hands.guest]=[s.hands.guest,s.hands.host];invalidate('host');invalidate('guest');one('host');one('guest');
+      for (const id of ids) { hand.splice(hand.indexOf(id), 1); s.discard.push(id); }
+      s.colour = kind.wild ? mv.col : last.c;
+      s.drawn = null; s.paid = false;
+      s.penalty += kind.pen || 0;
+      if (last.k === 'trade') {
+        [s.hands.host, s.hands.guest] = [s.hands.guest, s.hands.host];
+        invalidate('host'); invalidate('guest'); one('host'); one('guest');
       } else one(by);
-      s.turn=last.k==='again'?by:opp;
-      // The next player's ordinary play/draw closes any unchallenged declaration.
-      if(s.owes[opp]){s.owes[opp]=false;s.oneKey[opp]=null;s.callWindow=null;}
-      ev={by,k:'play',ids,col:s.colour};
-    } else if(mv.k==='draw') {
-      if(s.drawn!=null)fail('Play the drawn card, or keep it.');
-      if(s.paid)fail('Play a card or pass after paying a draw penalty.');
-      if(s.owes[opp]){s.owes[opp]=false;s.oneKey[opp]=null;s.callWindow=null;}
-      if(s.penalty) {
-        const pen=s.penalty,ids=draw(by,pen);s.penalty=0;s.drawn=null;
+      s.turn = last.k === 'again' ? by : opp;
+      closeMissed();
+      ev = { by, k: 'play', ids, col: s.colour };
+    } else if (mv.k === 'draw') {
+      if (s.drawn != null) fail('Play the drawn card, or keep it.');
+      if (s.paid) fail('Play a card or pass after paying a draw penalty.');
+      closeMissed();
+      if (s.penalty) {
+        const pen = s.penalty, ids = draw(by, pen);
+        s.penalty = 0; s.drawn = null;
         // Empty-handed opponent wins as soon as the chain is paid. Cards just
         // drawn can never resurrect a finished game or start another stack.
-        if(!s.hands[opp].length){s.winner=opp;s.turn=null;}
-        else if(s.rules==='official'){s.turn=opp;s.paid=false;}
-        else{s.paid=true;}
-        ev={by,k:'draw',ids,pen};
+        if (!s.hands[opp].length) { s.winner = opp; s.turn = null; }
+        else if (s.rules === 'official') { s.turn = opp; s.paid = false; }
+        else s.paid = true;
+        ev = { by, k: 'draw', ids, pen };
       } else {
-        const ids=draw(by,1);s.paid=false;
-        if(ids.length&&hueFits({...s,drawn:ids[0]},HUE_DECK[ids[0]]))s.drawn=ids[0];else s.turn=opp;
-        ev={by,k:'draw',ids};
+        const ids = draw(by, 1);
+        s.paid = false;
+        if (ids.length && hueFits({ ...s, drawn: ids[0] }, HUE_DECK[ids[0]])) s.drawn = ids[0];
+        else s.turn = opp;
+        ev = { by, k: 'draw', ids };
       }
-    } else if(mv.k==='keep'||mv.k==='pass') {
-      if(mv.k==='keep'?s.drawn==null:(!s.paid||s.drawn!=null))fail('You need to draw or play first.');
-      s.drawn=null;s.paid=false;s.turn=opp;ev={by,k:mv.k};
+    } else if (mv.k === 'keep' || mv.k === 'pass') {
+      if (mv.k === 'keep' ? s.drawn == null : (!s.paid || s.drawn != null)) fail('You need to draw or play first.');
+      s.drawn = null; s.paid = false; s.turn = opp;
+      ev = { by, k: mv.k };
     } else fail('Unknown move.');
   }
-  if(s.firstOut&&s.hands[s.firstOut].length)s.firstOut=null;
-  if(!s.firstOut)s.firstOut=[by,opp].find(seat=>!s.hands[seat].length)||null;
-  if(!s.winner&&s.firstOut&&!s.penalty){s.winner=s.firstOut;s.turn=null;}
-  s.log.push(ev);return s;
+  // who emptied their hand first; it wins once no chain is on
+  if (s.firstOut && s.hands[s.firstOut].length) s.firstOut = null;
+  if (!s.firstOut) s.firstOut = [by, opp].find((seat) => !s.hands[seat].length) || null;
+  if (!s.winner && s.firstOut && !s.penalty) { s.winner = s.firstOut; s.turn = null; }
+  s.log.push(ev);
+  return s;
 }
-function huState(m, limit=Infinity) {
-  if(m.hueVersion!==2)return huLegacyState(m,limit);
-  let s=hueInitial(m);
-  if(!s.starter)return s;
-  for(const key of sortedKeys(m.plays)) {
-    if(s.winner||s.log.length>=limit)break;
-    try{s=hueApply(s,m.plays[key],key);}catch(_){/* Ignore invalid/stale commands in imported logs. */}
+function huState(m, limit = Infinity) {
+  if (m.hueVersion !== 2) return huLegacyState(m, limit);
+  let s = hueInitial(m);
+  if (!s.starter) return s;
+  for (const key of sortedKeys(m.plays)) {
+    if (s.winner || s.log.length >= limit) break;
+    try { s = hueApply(s, m.plays[key], key); } catch (_) { /* Ignore invalid/stale commands in imported logs. */ }
   }
   return s;
 }
@@ -315,45 +349,61 @@ function hueCard(id) {
     h('span', { class: 'ix end' }, corner));
 }
 function hueRuleSteps(m) {
-  if(m?.game === 'hu' && m.hueVersion !== 2) return GAMES.hu.howTo;
+  if (m?.game === 'hu' && m.hueVersion !== 2) return GAMES.hu.howTo;
   const mode = m?.hueVersion === 2 ? m.hueRules : null;
+  const rules = mode === 'official' ? 'Official-style: one card at a time, no stacking. Splash +2 and Flood +4 make the other player draw and skip their turn. Manual shuffles are left out. Flood needs a hand with no card in the active colour.'
+    : mode === 'custom' ? 'Custom: play matching number cards together. Stack Splash +2 and Flood +4; after paying, the player may play or pass. Each player gets two draw-pile shuffles.'
+    : 'Custom allows matching-number pairs, draw stacking, a turn after picking up, Trade and two shuffles each. Official-style uses one card at a time, no stacking, and draw penalties skip the turn.';
   return [
-    {t:'Who goes first',d:'Rock, paper, scissors, best of three. The winner chooses Custom or Official-style before seven cards are dealt.',art:'art/rps-rock.png'},
-    {t:'Match the pile',d:'Match its colour, number or symbol. Tap once to select, then again or tap the pile to play; you can also drag a card onto the pile.',art:'art/hue-orange.png'},
-    {t:'Choose your rules',d:mode==='official'?'Official-style: one card at a time, no stacking. Splash +2 and Flood +4 make the other player draw and skip their turn. Manual shuffles are left out. Flood needs a hand with no card in the active colour.':mode==='custom'?'Custom: play matching number cards together. Stack Splash +2 and Flood +4; after paying, the player may play or pass. Each player gets two draw-pile shuffles.':'Custom allows matching-number pairs, draw stacking, a turn after picking up, Trade and two shuffles each. Official-style uses one card at a time, no stacking, and draw penalties skip the turn.'},
-    {t:'Pick a colour',d:'Blend and Flood let you choose a colour above your visible hand. Trade swaps hands and chooses a colour too.',art:'art/hue-wild.png'},
-    {t:'Hues!',d:'Tap Hues! only at exactly one card. Drawing resets it. When the other player’s turn appears, Call out stays locked for two seconds on their screen. After it unlocks they can catch you for two cards, unless you tap Hues! first. You can still declare after the countdown until you are caught.'},
-    {t:'Empty your hand to win',d:'A last Splash or Flood can only be answered by a stacking card already in hand in Custom. Once the other player picks up the penalty, the game ends immediately. A last Blend ends the game after the colour is chosen.'},
-    {t:'About Official-style',d:'A first-out adaptation using the painted Hues deck. It does not reproduce UNO’s exact deck, bluff/challenge system or 500-point match scoring.'},
+    { t: 'Who goes first', d: 'Rock, paper, scissors, best of three. The winner chooses Custom or Official-style before seven cards are dealt.', art: 'art/rps-rock.png' },
+    { t: 'Match the pile', d: 'Match its colour, number or symbol. Tap once to select, then again or tap the pile to play; you can also drag a card onto the pile.', art: 'art/hue-orange.png' },
+    { t: 'Choose your rules', d: rules },
+    { t: 'Pick a colour', d: 'Blend and Flood let you choose a colour above your visible hand. Trade swaps hands and chooses a colour too.', art: 'art/hue-wild.png' },
+    { t: 'Hues!', d: 'Tap Hues! only at exactly one card. Drawing resets it. When the other player’s turn appears, Call out stays locked for two seconds on their screen. After it unlocks they can catch you for two cards, unless you tap Hues! first. You can still declare after the countdown until you are caught.' },
+    { t: 'Empty your hand to win', d: 'A last Splash or Flood can only be answered by a stacking card already in hand in Custom. Once the other player picks up the penalty, the game ends immediately. A last Blend ends the game after the colour is chosen.' },
+    { t: 'About Official-style', d: 'A first-out adaptation using the painted Hues deck. It does not reproduce UNO’s exact deck, bluff/challenge system or 500-point match scoring.' },
   ];
 }
 function makeHueRules(box) {
-  let m, busy=false;
-  const root=h('div',{class:'hu-rules-wrap'});box.append(root);
+  let m, busy = false;
+  const root = h('div', { class: 'hu-rules-wrap' });
+  box.append(root);
   async function choose(rules) {
-    if(busy||rpsState(m).starter!==G.seat)return;busy=true;draw();
-    const path=matchPath(m.id);
+    if (busy || rpsState(m).starter !== G.seat) return;
+    busy = true; draw();
+    const path = matchPath(m.id);
     try {
-      await Net.timed(FB.fs.runTransaction(async tx=>{
-        const ref=FB.fs.doc(path),snap=await tx.get(ref),latest=snap.data();
-        if(!snap.exists||rpsState(latest).starter!==G.seat||latest.hueRules)throw Error('The rules have already been chosen.');
-        tx.update(ref,{hueRules:rules});
+      await Net.timed(FB.fs.runTransaction(async (tx) => {
+        const ref = FB.fs.doc(path), snap = await tx.get(ref), latest = snap.data();
+        if (!snap.exists || rpsState(latest).starter !== G.seat || latest.hueRules) throw Error('The rules have already been chosen.');
+        tx.update(ref, { hueRules: rules });
       }));
-    }catch(e){toast(e.message||'Couldn’t choose the rules. Try again.');}
-    finally{busy=false;if(root.isConnected)draw();}
+    } catch (e) { toast(e.message || 'Couldn’t choose the rules. Try again.'); }
+    finally { busy = false; if (root.isConnected) draw(); }
   }
+  const rows = [
+    ['Cards per play', 'Same-number cards together', 'One card'],
+    ['Draw stacking', 'Splash / Flood chains', 'No stacking'],
+    ['After a penalty', 'Play or pass', 'Turn skipped'],
+    ['Manual shuffle', 'Twice each', 'Not available'],
+    ['Flood', 'Wild colour choice', 'Only without the active colour'],
+  ];
   function draw() {
-    if(!m)return;
-    const mine=rpsState(m).starter===G.seat;
-    root.replaceChildren(h('div',{class:'paper hu-rules-card'},h('div',{class:'tape sage'}),
-      h('span',{class:'eyebrow'},'Before the first card'),h('h1',{class:'display h2'},'Choose your Hues'),
-      h('p',{class:'hand-note'},mine?'You won rock, paper, scissors. You pick the rules.':partnerName()+' won rock, paper, scissors and is choosing the rules.'),
-      h('table',{class:'hu-rules-table'},h('thead',null,h('tr',null,h('th',null,'Rule'),h('th',null,'Custom'),h('th',null,'Official-style'))),
-        h('tbody',null,...[['Cards per play','Same-number cards together','One card'],['Draw stacking','Splash / Flood chains','No stacking'],['After a penalty','Play or pass','Turn skipped'],['Manual shuffle','Twice each','Not available'],['Flood','Wild colour choice','Only without the active colour']].map(row=>h('tr',null,...row.map((text,i)=>h(i===0?'th':'td',i===0?{scope:'row'}:null,text)))))),
-      h('p',{class:'muted'},'Both keep all 95 painted Hues cards, including Trade, one-card declarations, fair callouts and first-out scoring. Official-style is an adaptation; no bluff/challenge or 500-point matches.'),
-      h('div',{class:'stack'},...['custom','official'].map(r=>h('button',{class:'btn '+(r==='custom'?'btn-primary':'btn-ink'),disabled:!mine||busy,'data-rules':r,onclick:()=>choose(r)},r==='custom'?'Play Custom':'Play Official-style')))));
+    if (!m) return;
+    const mine = rpsState(m).starter === G.seat;
+    root.replaceChildren(h('div', { class: 'paper hu-rules-card' }, h('div', { class: 'tape sage' }),
+      h('span', { class: 'eyebrow' }, 'Before the first card'),
+      h('h1', { class: 'display h2' }, 'Choose your Hues'),
+      h('p', { class: 'hand-note' }, mine ? 'You won rock, paper, scissors. You pick the rules.' : partnerName() + ' won rock, paper, scissors and is choosing the rules.'),
+      h('table', { class: 'hu-rules-table' },
+        h('thead', null, h('tr', null, h('th', null, 'Rule'), h('th', null, 'Custom'), h('th', null, 'Official-style'))),
+        h('tbody', null, ...rows.map((row) => h('tr', null, ...row.map((text, i) => h(i === 0 ? 'th' : 'td', i === 0 ? { scope: 'row' } : null, text)))))),
+      h('p', { class: 'muted' }, 'Both keep all 95 painted Hues cards, including Trade, one-card declarations, fair callouts and first-out scoring. Official-style is an adaptation; no bluff/challenge or 500-point matches.'),
+      h('div', { class: 'stack' }, ...['custom', 'official'].map((r) => h('button', {
+        class: 'btn ' + (r === 'custom' ? 'btn-primary' : 'btn-ink'), disabled: !mine || busy, 'data-rules': r, onclick: () => choose(r),
+      }, r === 'custom' ? 'Play Custom' : 'Play Official-style')))));
   }
-  return {update(nm){m=nm;draw();},destroy(){root.remove();}};
+  return { update(nm) { m = nm; draw(); }, destroy() { root.remove(); } };
 }
 
 function makeHU(box, ctx) {
@@ -378,8 +428,8 @@ function makeHU(box, ctx) {
   const actBtn = h('button', { class: 'btn hu-act' });
   const btnRow = h('div', { class: 'hu-btns' }, huesBtn, actBtn, calloutBtn);
   const calloutCountdown = h('output', { class: 'hu-catch-countdown script', hidden: true, 'aria-live': 'off' });
-  const colourPicker = h('div', { class: 'hu-colour-picker paper', hidden: true, role:'group', 'aria-label':'Choose the next colour' });
-  const ruleBadge = h('div', { class:'hu-rule-badge script' });
+  const colourPicker = h('div', { class: 'hu-colour-picker paper', hidden: true, role: 'group', 'aria-label': 'Choose the next colour' });
+  const ruleBadge = h('div', { class: 'hu-rule-badge script' });
   const handEl = h('div', { class: 'hu-hand', role: 'group', 'aria-label': 'Your hand' });
   const endArea = h('div', { class: 'end-area', hidden: true });
   const root = h('div', { class: 'hu' }, h('div', { class: 'turnbar' }, chipMe, chipThem), ruleBadge, theirHand, tableEl, status, calloutCountdown, btnRow, colourPicker, handEl, endArea);
@@ -456,8 +506,8 @@ function makeHU(box, ctx) {
     paintCalloutWindow(full);
     shuffleBtn.hidden = s.version !== 2 || s.rules !== 'custom';
     shuffleBtn.disabled = pending || animating || choosing || !!s.winner || s.shuffles?.[seat] >= HUE_SHUFFLES || s.drawn != null || s.pile.length < 2;
-    shuffleBtn.replaceChildren(h('span',null,'Shuffle pile'),h('small',null,Math.max(0,HUE_SHUFFLES-(s.shuffles?.[seat] || 0))+' left'));
-    shuffleBtn.title = s.drawn!=null?'Finish the drawn-card choice first':'Reshuffle the remaining draw pile · twice each · either turn';
+    shuffleBtn.replaceChildren(h('span', null, 'Shuffle pile'), h('small', null, Math.max(0, HUE_SHUFFLES - (s.shuffles?.[seat] || 0)) + ' left'));
+    shuffleBtn.title = s.drawn != null ? 'Finish the drawn-card choice first' : 'Reshuffle the remaining draw pile · twice each · either turn';
     if (s.winner) { status.textContent = ''; return; }
     const top = HUE_DECK[s.discard[s.discard.length - 1]];
     status.replaceChildren();
@@ -479,13 +529,13 @@ function makeHU(box, ctx) {
     }
   }
 
-  function paintCalloutWindow(full=st) {
-    if(!full)return;
+  function paintCalloutWindow(full = st) {
+    if (!full) return;
     calloutBtn.disabled = pending || choosing || !canCallOut(full);
-    const window = full.callWindow?.by===seat ? full.callWindow : (hueNeedsNotice(full,seat)&&localWindow?.one===full.oneKey[opp] ? localWindow : null);
-    const remaining=window ? Math.max(0,window.until-Net.now()) : 0;
-    calloutCountdown.hidden = !window || remaining<=0;
-    if(window&&remaining>0)calloutCountdown.textContent = 'Call out unlocks in ' + (remaining/1000).toFixed(1)+'s';
+    const window = full.callWindow?.by === seat ? full.callWindow : (hueNeedsNotice(full, seat) && localWindow?.one === full.oneKey[opp] ? localWindow : null);
+    const remaining = window ? Math.max(0, window.until - Net.now()) : 0;
+    calloutCountdown.hidden = !window || remaining <= 0;
+    if (window && remaining > 0) calloutCountdown.textContent = 'Call out unlocks in ' + (remaining / 1000).toFixed(1) + 's';
   }
 
   // ---- animation queue: one logged move at a time ----
@@ -535,7 +585,11 @@ function makeHU(box, ctx) {
       Sound.lose(); vibrate([10, 60, 10]);
       toast(ev.by === seat ? `Caught! ${P} picks up ${HUE_CALLOUT}` : `${P} called you out: pick up ${HUE_CALLOUT}`, 3000);
       await flyDrawn(ev.who, ev.ids);
-    } else if(ev.k === 'shuffle') { paint(after); Sound.whoosh();toast(ev.by===seat?'Draw pile shuffled · '+(HUE_SHUFFLES-after.shuffles[seat])+' left':P+' shuffled the draw pile');await settle(deck.animate([{rotate:'0deg'},{rotate:'-9deg'},{rotate:'8deg'},{rotate:'0deg'}],{duration:380}));
+    } else if (ev.k === 'shuffle') {
+      paint(after);
+      Sound.whoosh();
+      toast(ev.by === seat ? 'Draw pile shuffled · ' + (HUE_SHUFFLES - after.shuffles[seat]) + ' left' : P + ' shuffled the draw pile');
+      await settle(deck.animate([{ rotate: '0deg' }, { rotate: '-9deg' }, { rotate: '8deg' }, { rotate: '0deg' }], { duration: 380 }));
     } else paint(after);
   }
   async function queue() {
@@ -571,45 +625,62 @@ function makeHU(box, ctx) {
   // Version 2 appends transactionally; declarations rebase safely over ordinary moves.
   // Legacy saved games retain their original seat-suffixed append keys.
   async function send(mv) {
-    if(pending||dead)return;
-    pendingN = Object.keys(m.plays || {}).length;pending=true;paintChrome();
-    const id=m.id,path=matchPath(id),expected=pendingN,command={by:seat,...mv,at:Net.now()};
-    if(!['hues','notice','callout'].includes(mv.k))Live.set({hover:null});
+    if (pending || dead) return;
+    pendingN = Object.keys(m.plays || {}).length; pending = true; paintChrome();
+    const id = m.id, path = matchPath(id), expected = pendingN, command = { by: seat, ...mv, at: Net.now() };
+    if (!['hues', 'notice', 'callout'].includes(mv.k)) Live.set({ hover: null });
     try {
-      if(m.hueVersion!==2) {
-        await Net.doc(path).update({plays:{['p'+String(pendingN).padStart(4,'0')+seat[0]]:command}});
-      } else await Net.timed(FB.fs.runTransaction(async tx=>{
-        const ref=FB.fs.doc(path),snap=await tx.get(ref),latest=snap.data();
-        if(!snap.exists)throw Error('This game is no longer available.');
-        const count=Object.keys(latest.plays||{}).length;
-        if(!['hues','notice','callout','shuffle'].includes(mv.k)&&count!==expected)throw Error('The table changed. Please tap again.');
-        if(G.table?.[seat]?.dev!==G.dev)throw Error('Your seat changed. Rejoin the table.');
-        const key='p'+String(count).padStart(5,'0');
-        hueApply(huState(latest),command,key);
-        tx.update(ref,{['plays.'+key]:{...command,at:['hues','notice'].includes(mv.k)?command.at:firebase.firestore.FieldValue.serverTimestamp()}});
+      if (m.hueVersion !== 2) {
+        await Net.doc(path).update({ plays: { [hueKeyV1(pendingN, seat)]: command } });
+      } else await Net.timed(FB.fs.runTransaction(async (tx) => {
+        const ref = FB.fs.doc(path), snap = await tx.get(ref), latest = snap.data();
+        if (!snap.exists) throw Error('This game is no longer available.');
+        const count = Object.keys(latest.plays || {}).length;
+        if (!['hues', 'notice', 'callout', 'shuffle'].includes(mv.k) && count !== expected) throw Error('The table changed. Please tap again.');
+        if (G.table?.[seat]?.dev !== G.dev) throw Error('Your seat changed. Rejoin the table.');
+        const key = hueKeyV2(count);
+        hueApply(huState(latest), command, key);
+        tx.update(ref, { ['plays.' + key]: { ...command, at: ['hues', 'notice'].includes(mv.k) ? command.at : firebase.firestore.FieldValue.serverTimestamp() } });
       }));
-    } catch(e) { if(mv.k!=='notice'&&!dead)toast(e.message||'Couldn’t save that move. Try again.'); }
-    finally { if(!dead&&m?.id===id){pending=false;paintChrome();} }
+    } catch (e) { if (mv.k !== 'notice' && !dead) toast(e.message || 'Couldn’t save that move. Try again.'); }
+    finally { if (!dead && m?.id === id) { pending = false; paintChrome(); } }
   }
   function tick() {
-    if(dead||!st)return;
-    if(st.version===2) {
+    if (dead || !st) return;
+    if (st.version === 2) {
       paintCalloutWindow();
       // Start the lockout only after this phone has rendered its own new turn.
       // No countdown or automatic penalty is sent to the one-card player.
-      if(hueNeedsNotice(st,seat)&&Net.online&&!animating&&!pending&&!timerBusy&&document.visibilityState!=='hidden') {
-        timerBusy=true;localWindow={one:st.oneKey[opp],until:Net.now()+HUE_CALLOUT_MS};paintChrome();
-        send({k:'notice',one:st.oneKey[opp]}).finally(()=>{timerBusy=false;});
+      if (hueNeedsNotice(st, seat) && Net.online && !animating && !pending && !timerBusy && document.visibilityState !== 'hidden') {
+        timerBusy = true;
+        localWindow = { one: st.oneKey[opp], until: Net.now() + HUE_CALLOUT_MS };
+        paintChrome();
+        send({ k: 'notice', one: st.oneKey[opp] }).finally(() => { timerBusy = false; });
       }
     }
   }
+  // The colour pots open above the hand; resolves with the colour, or null for "Not this card".
+  // A pot only counts if the press started on it (or it was a keyboard click), so the tap that
+  // played the card can't land on a pot as well.
   function chooseColour(title) {
-    choosing=true;drag=null;colourPicker.hidden=false;root.classList.add('choosing-colour');
+    choosing = true; drag = null; colourPicker.hidden = false; root.classList.add('choosing-colour');
     paintChrome();
-    return new Promise(resolve=>{
-      colourResolve=resolve;
-      const finish=col=>{if(!colourResolve)return;const done=colourResolve;colourResolve=null;choosing=false;colourPicker.hidden=true;root.classList.remove('choosing-colour');done(col);};
-      colourPicker.replaceChildren(h('div',{class:'script'},title),h('div',{class:'hue-pots'},...HUE_NAMES.map((name,i)=>h('button',{class:'hue-pot '+HUE_COLOURS[i],onpointerdown:e=>{e.currentTarget.dataset.armed='1';},onclick:e=>{if(e.detail===0||e.currentTarget.dataset.armed==='1')finish(i);},'aria-label':name},h('i'),h('span',null,name)))),h('button',{class:'hu-colour-cancel',onclick:()=>finish(null)},'Not this card'));
+    return new Promise((resolve) => {
+      colourResolve = resolve;
+      const finish = (col) => {
+        if (!colourResolve) return;
+        const done = colourResolve;
+        colourResolve = null; choosing = false; colourPicker.hidden = true; root.classList.remove('choosing-colour');
+        done(col);
+      };
+      colourPicker.replaceChildren(
+        h('div', { class: 'script' }, title),
+        h('div', { class: 'hue-pots' }, ...HUE_NAMES.map((name, i) => h('button', {
+          class: 'hue-pot ' + HUE_COLOURS[i], 'aria-label': name,
+          onpointerdown: (e) => { e.currentTarget.dataset.armed = '1'; },
+          onclick: (e) => { if (e.detail === 0 || e.currentTarget.dataset.armed === '1') finish(i); },
+        }, h('i'), h('span', null, name)))),
+        h('button', { class: 'hu-colour-cancel', onclick: () => finish(null) }, 'Not this card'));
     });
   }
   async function play(ids) {
@@ -629,7 +700,7 @@ function makeHU(box, ctx) {
     let col;
     if (HUE_KIND[last.k].wild) {
       col = await chooseColour(last.k === 'trade' ? 'Swap hands, then pick the colour' : 'Pick the next colour');
-      if(dead)return;
+      if (dead) return;
       if (col == null || !canAct()) { sel = []; paintHand(st); paintChrome(); Live.set({ hover: null }); return; }
     }
     sel = [];
@@ -654,7 +725,9 @@ function makeHU(box, ctx) {
     if (!canSayHues(st)) { toast(st && st.said[seat] ? 'You’ve called it' : 'Call Hues when you’re down to one card'); return; }
     send({ k: 'hues' });
   });
-  shuffleBtn.addEventListener('click',()=>{if(!shuffleBtn.disabled&&st.version===2&&st.rules==='custom'&&st.shuffles[seat]<HUE_SHUFFLES)send({k:'shuffle'});});
+  shuffleBtn.addEventListener('click', () => {
+    if (!shuffleBtn.disabled && st.version === 2 && st.rules === 'custom' && st.shuffles[seat] < HUE_SHUFFLES) send({ k: 'shuffle' });
+  });
   calloutBtn.addEventListener('click', () => {
     if (pending) return;
     if (!canCallOut(st)) { toast(`Nothing to call out. ${P} has to be on one card without calling Hues`); return; }
@@ -709,7 +782,7 @@ function makeHU(box, ctx) {
       m = nm;
       if (rendered < 0) {
         layout();
-        if(!timer)timer=setInterval(tick,100);
+        if (!timer) timer = setInterval(tick, 100);
         st = huState(m);
         rendered = st.log.length;
         requestAnimationFrame(() => { if (!dead) paint(huState(m, rendered)); });
@@ -722,6 +795,6 @@ function makeHU(box, ctx) {
     },
     onPeers() { if (st && !animating) paintChrome(); },
     isOver() { return !!(st && st.winner); },
-    destroy() { dead = true; clearInterval(timer); if(colourResolve){const done=colourResolve;colourResolve=null;done(null);} Live.set({ hover: null }); },
+    destroy() { dead = true; clearInterval(timer); if (colourResolve) { const done = colourResolve; colourResolve = null; done(null); } Live.set({ hover: null }); },
   };
 }
