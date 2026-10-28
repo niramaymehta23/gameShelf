@@ -304,7 +304,8 @@ try {
     huMoves++;
     const last = await state(p, 'huState(G.match).log.at(-1)');
     if (last.k === 'play' && last.ids.length > 1 && !multi) { multi = true; check(true, `played ${last.ids.length} cards of the same number together`); }
-    if (await state(p, 'huState(G.match).owes[G.seat]')) {
+    // (a Trade as your last card can end the game with you on one card: then there's nothing to call)
+    if (await state(p, '!huState(G.match).winner && huState(G.match).owes[G.seat]')) {
       if (!forgot) { forgot = true; return; } // leave it for the other phone to call out
       n = await logLen(p);
       await p.locator('.hu-btns .hu-call', { hasText: 'Hues!' }).click();
