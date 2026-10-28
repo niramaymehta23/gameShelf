@@ -17,6 +17,7 @@ function boot() {
   } catch (e) {}
 
   Net.connect();
+  if (new URLSearchParams(location.search).has('stonks')) { STONKS.start(); return; }
   const saved = Pref.get('table');
   if (join && join !== saved) { G.pendingJoin = join; route(); }
   else if (saved) openTable(saved);

@@ -32,9 +32,13 @@ const snap = (p, name) => p.screenshot({ path: path.join(SHOTS, name + '.png') }
 const state = (p, expr) => p.evaluate(expr);
 
 async function rpsRound(a, b, pa, pb) {
+  const round = await state(a, 'rpsState(G.match).rounds.length');
+  await a.locator('.choices:not(.locked)').waitFor();
+  await b.locator('.choices:not(.locked)').waitFor();
   await a.locator('.choices .hand', { hasText: pa }).click();
   await sleep(250);
   await b.locator('.choices .hand', { hasText: pb }).click();
+  await Promise.all([a, b].map(p => p.waitForFunction(n => rpsState(G.match).rounds.length > n, round)));
   await sleep(3700); // reveal animation + verdict
 }
 
@@ -76,7 +80,9 @@ function shipCells(fleet) {
 }
 
 const server = await startServer();
-const browser = await chromium.launch({ headless: !process.env.HEADED });
+// Use Chromium's full browser/new headless implementation. On macOS the separate
+// headless shell can crash natively after the long multi-game session.
+const browser = await chromium.launch({ headless: !process.env.HEADED, channel: process.env.E2E_CHANNEL || 'chromium', executablePath: process.env.E2E_EXECUTABLE_PATH || undefined });
 const phone = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true };
 const ctxA = await browser.newContext(phone), ctxB = await browser.newContext(phone);
 const a = await ctxA.newPage(), b = await ctxB.newPage();
@@ -263,6 +269,10 @@ try {
   await sleep(500);
   await rpsRound(a, b, 'Rock', 'Scissors');
   await rpsRound(a, b, 'Rock', 'Scissors');
+  await a.locator('.hu-rules-card').waitFor();
+  check(await b.locator('[data-rules=custom]').isDisabled(), 'only the RPS winner chooses Hues rules');
+  await snap(a, '13-hu-rules-choice');
+  await a.locator('[data-rules=custom]').click();
   await a.locator('.hu-hand .hcard').first().waitFor({ timeout: 12000 }); await b.locator('.hu-hand .hcard').first().waitFor({ timeout: 12000 });
   await sleep(600);
   check(await state(a, 'huState(G.match).turn === G.seat'), 'RPS winner plays the first card');
@@ -276,6 +286,7 @@ try {
   const logLen = (p) => state(p, 'huState(G.match).log.length');
   const waitLog = (p, n) => p.waitForFunction((n) => huState(G.match).log.length > n, n, { timeout: 10000 });
   async function huMove(p) {
+    const wasDragged = dragged;
     const plan = await p.evaluate(() => {
       const s = huState(G.match), hand = s.hands[G.seat];
       if (s.owes[other(G.seat)] && s.hands[other(G.seat)].length === 1) return { callout: true };
@@ -292,7 +303,7 @@ try {
       const before = await state(victim, 'huState(G.match).hands[G.seat].length');
       await p.locator('.hu-btns .hu-call', { hasText: 'Call out' }).click();
       await waitLog(p, n);
-      await sleep(900);
+      await victim.waitForFunction((before) => huState(G.match).hands[G.seat].length === before + 2, before, { timeout: 10000 });
       callouts++;
       if (callouts === 1) { await snap(victim, '16-hu-called-out'); check(await state(victim, 'huState(G.match).hands[G.seat].length') === before + 2, 'Call out: caught on one card without Hues, picks up 2'); }
       return;
@@ -316,12 +327,13 @@ try {
         await p.locator(`.hu-hand .hcard.sel[data-id="${plan.ids[0]}"]`).click({ position: { x: 12, y: 18 } });
       }
       if (plan.wild) {
-        await p.locator('#sheet .hue-pot').first().waitFor();
+        await p.locator('.hu-colour-picker .hue-pot').first().waitFor();
         if (!pickedColour) { pickedColour = true; await snap(p, '15-hu-colour'); }
-        await p.locator('#sheet .hue-pot').nth(huMoves % 4).click();
+        await p.locator('.hu-colour-picker .hue-pot').nth(huMoves % 4).click();
       }
     }
     await waitLog(p, n);
+    if (!wasDragged && dragged) check(await p.evaluate(n => huState(G.match).log.slice(n).some(e => e.k === 'play'), n), 'dragged a card onto the pile');
     huMoves++;
     const last = await state(p, 'huState(G.match).log.at(-1)');
     if (last.k === 'play' && last.ids.length > 1 && !multi) { multi = true; check(true, `played ${last.ids.length} cards of the same number together`); }
@@ -339,7 +351,6 @@ try {
     const p = (await huReady(a)) ? a : (await huReady(b)) ? b : null;
     if (!p) { await sleep(80); continue; }
     await huMove(p);
-    if (huMoves === 1) check(dragged && await state(a, 'huState(G.match).log[0].k === "play"'), 'dragged a card onto the pile');
     if (huMoves === 12) { await sleep(700); await snap(a, '16-hu-mid'); await snap(b, '16-hu-mid-other'); }
   }
   await sleep(2600);
@@ -455,7 +466,8 @@ try {
   await a.locator('.gbox').first().waitFor({ timeout: 8000 }); await b.locator('.gbox').first().waitFor({ timeout: 8000 });
   await sleep(800);
   check(/IPOs [01] [01]/.test((await a.locator('.score-grid').innerText()).replace(/\s+/g, ' ')), 'score sheet has an IPOs row with the win');
-  await snap(a, '24-shelf-four');
+  check(await a.locator('.gbox').count() === 5 && await a.locator('.gbox.st').isVisible(), 'STONKS is the fifth shelf game');
+  await snap(a, '24-shelf-five');
 
   await a.locator('#chatBtn').click();
   await snap(a, '11-chat-sheet');
@@ -493,7 +505,7 @@ try {
   failures++;
   console.error('\n' + e.stack);
   for (const [n, p] of [['A', a], ['B', b]]) {
-    const d = await p.evaluate(() => JSON.stringify({ seat: G.seat, online: Net.online, subs: [...Net.subs.keys()], moves: G.match && G.match.moves, screen: cur.name, turn: G.match && G.match.game === 'c4' ? c4State(G.match).turn : null })).catch((x) => String(x));
+    const d = await p.evaluate(() => JSON.stringify({ seat: G.seat, online: Net.online, subs: [...Net.subs.keys()], moves: G.match && G.match.moves, rps:G.match?.rps, game:G.match?.game, screen: cur.name, turn: G.match && G.match.game === 'c4' ? c4State(G.match).turn : null })).catch((x) => String(x));
     console.error(n, d);
   }
   await snap(a, 'ERR-a').catch(() => {}); await snap(b, 'ERR-b').catch(() => {});

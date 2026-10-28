@@ -173,6 +173,7 @@ function makeRPS(box, ctx) {
     const line = game === 'c4'
       ? (meFirst ? 'You’re red, and red drops first.' : `You’re yellow. ${P} is red and drops first.`)
       : game === 'hu' ? (meFirst ? 'Seven cards each, and you play the first one.' : `Seven cards each, and ${P} plays the first one.`)
+      : game === 'st' ? (meFirst ? 'Five cards each, and you take the first turn.' : `Five cards each, and ${P} takes the first turn.`)
       : game === 'ip' ? (meFirst ? 'You lead the first quarter. The market opens.' : `${P} leads the first quarter. The market opens.`)
       : (meFirst ? 'Hide your fleet, then you fire the first shot.' : `Hide your fleet, then ${P} fires the first shot.`);
     let done = false;

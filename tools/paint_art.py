@@ -483,3 +483,28 @@ def ipo_stroke(W=240, H=40):
     save_rgba(s.rgba(), 'ipo-stroke.png')
 
 box_ip(); ipo_stroke()
+
+# ================= STONKS (the portfolio card game) =================
+def box_st(W=360, H=480):
+    s = Sheet(W, H)
+    cards = [(125, 260, -0.22, (138, 90, 60)), (185, 240, -0.03, (95, 143, 95)), (240, 265, 0.20, (40, 70, 140))]
+    reserve = np.zeros((H, W), bool)
+    for cx, cy, a, col in cards:
+        reserve |= poly(W, H, rot_rect(cx, cy, 124, 190, a))
+    s.wash(rrect(W, H, 8, 8, W-8, H-8, 10) & ~reserve, (184, 112, 54), strength=.88, edge=.8, rough=.06)
+    for i, (cx, cy, a, col) in enumerate(cards):
+        mask = poly(W, H, rot_rect(cx, cy, 108, 172, a))
+        for other_cx, other_cy, other_a, _ in cards[i+1:]:
+            mask &= ~poly(W, H, rot_rect(other_cx, other_cy, 124, 190, other_a))
+        s.wash(mask, col, strength=.72, edge=1.0, rough=.09)
+    s.ink([rot_rect(240, 265, 124, 190, .2) + [rot_rect(240, 265, 124, 190, .2)[0]]], width=2.2)
+    # An ink-sketch business tower on the top card.
+    s.ink([[(210, 308), (222, 225), (262, 232), (250, 316)], [(235, 228), (223, 310)], [(218, 252), (258, 259)], [(214, 277), (254, 284)]], width=2.8, color=(244, 236, 220), alpha=.95)
+    # Three ochre coins: three different portfolios to win.
+    for cx, cy in [(100, 383), (140, 389), (181, 383)]:
+        s.wash(disk(W, H, cx, cy, 19), (226, 168, 60), strength=.85, edge=1.0)
+        s.ink([circle_path(cx, cy, 17, 32)], width=1.5)
+    splatter(s, (40, 70, 140), 7, (38, 45, 310, 110), 4)
+    save_rgba(s.rgba(), 'box-st.png')
+
+box_st()

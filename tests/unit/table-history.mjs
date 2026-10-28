@@ -1,0 +1,12 @@
+import fs from 'node:fs';import vm from 'node:vm';import assert from 'node:assert/strict';
+const data={},G={dev:'my-device'},calls=[];let snapshot={exists:true,data:()=>({created:123,host:{dev:'my-device'},guest:{dev:'partner'}})};
+const ctx=vm.createContext({G,Pref:{get:k=>data[k],set:(k,v)=>{data[k]=v;}},other:s=>s==='host'?'guest':'host',toast:t=>calls.push(['toast',t]),closeSheet:()=>{},openTable:code=>calls.push(['open',code]),Net:{doc:()=>({get:async()=>snapshot})}});
+const source=fs.readFileSync('public/js/app.js','utf8');vm.runInContext(source.slice(source.indexOf('const TableHistory ='),source.indexOf('async function write('))+'\nglobalThis.H=TableHistory;',ctx);const H=ctx.H;
+const table=(code='ABCD')=>({code,created:123,host:{dev:'my-device',name:'Same name'},guest:{dev:'partner',name:'Partner'}});
+H.remember(table(),'host');H.remember(table(),'host');assert.equal(H.list().length,1);assert.equal(H.list()[0].partner,'Partner');
+H.remember(table('EFGH'),'guest');assert.equal(H.list().length,1,'matching a name cannot claim another device’s seat');
+const btn={disabled:false};await H.rejoin(H.list()[0],btn);assert.ok(calls.some(([k,c])=>k==='open'&&c==='ABCD'));assert.equal(btn.disabled,false);
+calls.length=0;snapshot={exists:true,data:()=>({created:999,host:{dev:'my-device'},guest:null})};await H.rejoin(H.list()[0],btn);assert.ok(!calls.some(([k])=>k==='open'),'reused codes cannot open a different table');
+snapshot={exists:false};await H.rejoin(H.list()[0],btn);assert.equal(H.list().length,1,'unavailable table stays in history until explicitly removed');H.forget('ABCD');assert.equal(H.list().length,0);H.remember(table(),'host');assert.equal(H.list().length,0,'forgetting the current table is not undone by live snapshots');H.ignored.delete('ABCD');H.remember(table(),'host');assert.equal(H.list().length,1,'explicitly revisiting remembers the table again');
+data['tables-history']='not JSON';assert.equal(H.list().length,0);data['tables-history']='[{"code":"bad"}]';assert.equal(H.list().length,0);
+console.log('  ok device-owned history, deduplication, safe rejoin, reused/deleted codes, local removal and corrupt storage');

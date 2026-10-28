@@ -8,6 +8,33 @@ const G = {
 const partnerName = () => (G.table && G.seat && G.table[other(G.seat)] && G.table[other(G.seat)].name) || 'Your partner';
 const myName = () => (G.table && G.seat && G.table[G.seat] && G.table[G.seat].name) || G.name || 'You';
 
+// Codes belong to this device, not to a name (two people may have the same name).
+const TableHistory = {
+  ignored: new Set(),
+  list() {
+    try { const rows = JSON.parse(Pref.get('tables-history') || '[]'); return Array.isArray(rows) ? rows.filter(x => x && /^[A-Z]{4}$/.test(x.code)).slice(0, 20) : []; }
+    catch (_) { return []; }
+  },
+  remember(t, seat) {
+    if (!seat || !t[seat] || t[seat].dev !== G.dev || this.ignored.has(t.code)) return;
+    const rows = this.list(), old = rows.find(x => x.code === t.code);
+    const row = { code: t.code, created: t.created || 0, host: t.host.dev, me: t[seat].name, partner: t[other(seat)]?.name || '', at: Date.now() };
+    if (old && ['created', 'host', 'me', 'partner'].every(k => old[k] === row[k]) && Date.now() - old.at < 60000) return;
+    Pref.set('tables-history', JSON.stringify([row, ...rows.filter(x => x.code !== t.code)].slice(0, 20)));
+  },
+  forget(code) { this.ignored.add(code); Pref.set('tables-history', JSON.stringify(this.list().filter(x => x.code !== code))); },
+  async rejoin(row, button) {
+    button.disabled = true;
+    try {
+      const snap = await Net.doc('tables/' + row.code).get(), t = snap.exists && snap.data();
+      if (!t || t.host.dev !== row.host || (row.created && t.created !== row.created)) { toast('That table has been cleared. You can remove it from your history.'); return; }
+      if (![t.host?.dev, t.guest?.dev].includes(G.dev)) { toast('This device no longer has a seat at that table.'); return; }
+      closeSheet(); openTable(row.code);
+    } catch (_) { toast('Couldn’t reach that table. Try again when you’re connected.'); }
+    finally { button.disabled = false; }
+  },
+};
+
 async function write(path, patch, { set = false } = {}) {
   try {
     const ref = Net.doc(path);
@@ -23,6 +50,7 @@ async function write(path, patch, { set = false } = {}) {
 
 function openTable(code, { joining = false } = {}) {
   closeTable(false);
+  TableHistory.ignored.delete(code);
   G.code = code; G.joining = joining; G.claimed = false;
   G.table = null; G.tableMissing = false;
   Pref.set('table', code);
@@ -48,6 +76,7 @@ function onTableSnap(s) {
   G.table = s.data();
   G.tableMissing = false;
   resolveSeat();
+  TableHistory.remember(G.table, G.seat);
   if (G.seat && prev) {
     const p = other(G.seat);
     if (!prev[p] && G.table[p]) { toast(`${G.table[p].name} sat down at the table`); Sound.ding(); }
@@ -102,7 +131,7 @@ const notice = (kind, m) => ({ id: Date.now().toString(36) + rid().slice(0, 4), 
 
 async function startMatch(game) {
   const id = Date.now().toString(36) + rid().slice(0, 4);
-  const ok = await write(matchPath(id), { id, game, created: Date.now(), by: G.seat, seed: rid() + rid(), rps: {}, moves: {}, shots: {}, plays: {}, bids: {}, fleets: {}, joined: { [G.seat]: true, [other(G.seat)]: false }, quit: {} }, { set: true });
+  const ok = await write(matchPath(id), { id, game, ...(game === 'hu' ? { hueVersion: 2, hueRules: null } : {}), ...(game === 'st' ? { stRulesVersion: 2 } : {}), created: Date.now(), by: G.seat, seed: rid() + rid(), rps: {}, moves: {}, shots: {}, plays: {}, bids: {}, fleets: {}, joined: { [G.seat]: true, [other(G.seat)]: false }, quit: {} }, { set: true });
   // a new game takes the place of a saved one of the same kind
   if (ok) await write('tables/' + G.code, { current: id, saved: { [game]: null } });
 }
@@ -214,11 +243,13 @@ function openSheet({ title, sub, body, art, actions = [], dismissible = true }) 
   const token = ++sheetToken;
   sh.className = '';
   sh.replaceChildren();
-  const panel = h('div', { class: 'panel paper', role: 'dialog', 'aria-modal': 'true' }, h('div', { class: 'tape' }), h('div', { class: 'grip' }));
-  if (art) panel.append(art);
-  if (title) panel.append(h('div', { class: 'sheet-title' }, title));
-  if (sub) panel.append(h('div', { class: 'sheet-sub' }, sub));
-  if (body) panel.append(typeof body === 'string' ? h('div', { class: 'sheet-body' }, body) : body);
+  const panel = h('div', { class: 'panel paper', role: 'dialog', 'aria-modal': 'true', 'aria-label': title || 'Table options' }, h('div', { class: 'tape' }), h('div', { class: 'grip' }));
+  const content = h('div', { class: 'sheet-content', role: 'region', tabindex: '0', 'aria-label': title || 'Details' });
+  if (art) content.append(art);
+  if (title) content.append(h('div', { class: 'sheet-title' }, title));
+  if (sub) content.append(h('div', { class: 'sheet-sub' }, sub));
+  if (body) content.append(typeof body === 'string' ? h('div', { class: 'sheet-body' }, body) : body);
+  panel.append(content);
   const row = h('div', { class: 'btn-row', style: 'flex-direction:column' });
   for (const a of actions) {
     row.append(h('button', {
@@ -245,7 +276,8 @@ const Screens = {};
 let cur = { name: null, obj: null, el: null };
 function route() {
   let name;
-  if (!G.code) name = 'landing';
+  if (G.localStonks) name = 'stonks';
+  else if (!G.code) name = 'landing';
   else if (!G.table) name = G.tableMissing ? 'missing' : 'loading';
   else if (!G.seat) name = 'seat';
   else if (!G.table.guest || !G.table.host) name = 'waiting';
@@ -300,7 +332,7 @@ function presence() {
 }
 function updateBar() {
   const bar = $('#bar');
-  const inTable = !!(G.code && G.table && G.seat);
+  const inTable = !G.localStonks && !!(G.code && G.table && G.seat);
   bar.hidden = !inTable;
   if (!inTable) return;
   const ps = presence();

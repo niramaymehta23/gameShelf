@@ -1,9 +1,26 @@
 'use strict';
 // ================= lobby screens =================
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // no I or O
-const TILE_POINTS = { A: 1, B: 3, C: 3, D: 2, E: 1, F: 4, G: 2, H: 4, J: 8, K: 5, L: 1, M: 3, N: 1, P: 3, Q: 10, R: 1, S: 1, T: 1, U: 1, V: 4, W: 4, X: 8, Y: 4, Z: 10 };
-const codeTile = (c) => h('span', { class: 'tile' }, c, h('sub', null, TILE_POINTS[c] || 1));
+const codeTile = (c) => h('span', { class: 'tile' }, c);
 const randCode = () => Array.from({ length: 4 }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join('');
+
+function tableHistoryList() {
+  const list = h('div', { class: 'table-history-list' });
+  const draw = () => {
+    const rows = TableHistory.list();
+    list.replaceChildren(...(rows.length ? rows.map(row => {
+      const rejoin = h('button', { class: 'btn btn-ink', onclick: () => TableHistory.rejoin(row, rejoin), 'aria-label': 'Rejoin table ' + row.code }, 'Rejoin');
+      return h('div', { class: 'table-history-row' },
+        h('div', null, h('b', null, row.me + (row.partner ? ' & ' + row.partner : ' · waiting for a partner')),
+          h('span', { class: 'script' }, row.code), h('small', null, 'Last visited ' + new Date(row.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }))),
+        rejoin, h('button', { class: 'history-remove', 'aria-label': 'Remove ' + row.code + ' from history', onclick: () => { TableHistory.forget(row.code); draw(); } }, 'Remove'));
+    }) : [h('p', { class: 'muted' }, 'Tables you visit on this device will appear here.')]));
+  };
+  draw(); return list;
+}
+function showTableHistory() {
+  openSheet({ title: 'Your recent tables', body: tableHistoryList(), sub: 'Saved on this device', actions: [{ label: 'Back', kind: 'ghost' }] });
+}
 
 Screens.loading = () => ({
   cls: 'waiting',
@@ -37,6 +54,8 @@ Screens.landing = () => {
   }
   function refreshButtons() {
     el.querySelectorAll('[data-needs-name]').forEach((b) => { b.disabled = !G.name; });
+    const go = el.querySelector('#joinGo'), code = el.querySelector('#codeInput');
+    if (go && !go.dataset.busy) go.disabled = !G.name || code.value.length !== 4;
   }
   function draw() {
     el.replaceChildren();
@@ -66,7 +85,7 @@ Screens.landing = () => {
         tiles.forEach((t, i) => {
           const ch = v[i] || '';
           if (ch && ch !== last[i]) { t.classList.remove('pop'); void t.offsetWidth; t.classList.add('pop'); }
-          t.replaceChildren(ch, ch ? h('sub', null, TILE_POINTS[ch] || 1) : '');
+          t.textContent = ch;
           t.classList.toggle('empty', !ch);
           t.classList.toggle('cursor', i === v.length && document.activeElement === input);
         });
@@ -74,7 +93,7 @@ Screens.landing = () => {
         go.disabled = v.length < 4 || !G.name;
         err.textContent = '';
       };
-      const go = h('button', { class: 'btn btn-primary', onclick: () => join(input.value, err, go) }, 'Sit down');
+      const go = h('button', { id: 'joinGo', class: 'btn btn-primary', onclick: () => join(input.value, err, go) }, 'Sit down');
       input.addEventListener('input', () => { Sound.tap(); paint(); if (input.value.length === 4 && G.name) join(input.value, err, go); });
       input.addEventListener('focus', paint); input.addEventListener('blur', paint);
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && input.value.length === 4) join(input.value, err, go); });
@@ -89,6 +108,7 @@ Screens.landing = () => {
       setTimeout(() => { paint(); }, 0);
     }
     el.append(hero, card);
+    if (mode === 'start' && TableHistory.list().length) el.append(h('div', { class: 'paper table-history' }, h('div', { class: 'tape sage' }), h('h2', { class: 'display' }, 'Your recent tables'), h('p', { class: 'muted' }, 'Codes and players saved on this device.'), tableHistoryList()));
     if (mode === 'join') el.append(h('button', { class: 'back-link', onclick: () => { mode = 'start'; draw(); } }, '← I’m setting up the table'));
     else el.append(h('p', { class: 'hand-note', style: 'margin-top:auto' }, 'One of you sets up a table and shares the four-letter code. The other joins with it.'));
     refreshButtons();
@@ -230,10 +250,20 @@ const GAMES = {
   },
 };
 
+const STONKS_LEGACY_HOWTO = [{ t: 'Who goes first', d: 'Rock, paper, scissors, best of three. The winner draws first. Five cards each to start.', art: 'art/rps-rock.png' }, { t: 'Build your empire', d: 'On your turn draw two, play up to three cards, then discard to seven. Bank Funding and actions, or lay Companies into colour portfolios.' }, { t: 'Make your move', d: 'Revenue Calls collect money. Choose targets for acquisitions, your own payment cards for debts, and Legal Team from your hand to block or counter. The status line says who must respond.' }, { t: 'Three colours win', d: 'Complete three portfolios in different groups, each with a named Company. Tap Rules & cards for every card and its restrictions.' }];
+GAMES.st = { name:'STONKS', cls:'st', art:'art/box-st.png', howTo:[
+  {t:'Who goes first',d:'Rock, paper, scissors, best of three. Deal five each, then the starter draws two.',art:'art/rps-rock.png'},
+  {t:'Your table, your hand',d:'Companies and wilds go straight into your public portfolios. Funding goes straight into Treasury. Only actions and Revenue Calls stay in your private hand.'},
+  {t:'Up to three actions',d:'Draw two each turn, or five when your action hand starts empty. Use up to three actions. Banking an action as Treasury money is free, even after action three. Finish by discarding excess action cards down to seven.'},
+  {t:'Tap the stacks',d:'Same-colour Companies stack together. Tap a Company or Treasury pile to spread it; tap it again to put it down. Tap a played two-colour Pivot to flip it free on your turn. Conglomerates can use any sector and have no payment value.'},
+  {t:'Respond and pay',d:'The prompt names the player who must respond. Legal Team can block or counter. Open your public stacks to choose payment cards; hand cards cannot pay.'},
+  {t:'Three colours win',d:'Complete three portfolios in different sectors, each with a named Company. Printed values, revenue ladders and card restrictions still apply.'}
+] };
+
 // ---------------- how to play ----------------
 // The same steps show before every new game, behind the ? in a game, and on the shelf.
 function howToList(key) {
-  return h('ol', { class: 'howto' }, ...GAMES[key].howTo.map((s, i) => h('li', null,
+  return h('ol', { class: 'howto' }, ...(key === 'hu' ? hueRuleSteps(G.match?.game === 'hu' ? G.match : null) : (key === 'st' && G.match?.game === 'st' && G.match.stRulesVersion !== 2 ? STONKS_LEGACY_HOWTO : GAMES[key].howTo)).map((s, i) => h('li', null,
     h('span', { class: 'n' }, i + 1),
     h('div', null, h('b', null, s.t), h('span', null, s.d)),
     s.art ? h('img', { class: 'wc', src: s.art, alt: '' }) : null)));
@@ -268,8 +298,8 @@ Screens.shelf = () => {
         h('span', { class: 'script' }, `${myName()} & ${P}’s`),
         h('h1', { class: 'display h2', style: 'margin:0' }, 'Pick a game'),
       ));
-      const cubby = h('div', { class: 'cubby' });
-      for (const key of ['c4', 'bs', 'hu', 'ip']) {
+      const cubby = h('div', { class: 'cubby', role: 'region', 'aria-label': 'Games · scroll to browse', tabindex: '0' });
+      for (const key of Object.keys(GAMES)) {
         const g = GAMES[key];
         const box = h('button', { class: `gbox ${g.cls}${g.soon ? ' soon' : ''}`, 'aria-label': g.name + (g.soon ? ', coming soon' : '') },
           h('img', { class: 'wc', src: g.art, alt: '' }),
@@ -291,6 +321,7 @@ Screens.shelf = () => {
       el.append(dresser, note,
         h('div', { class: 'shelf-foot' },
           h('div', { class: 'table-code' }, 'Table code ', h('b', null, G.code)),
+          h('button', { class: 'btn btn-ghost', onclick: showTableHistory }, 'Recent tables'),
           h('button', { class: 'btn btn-ghost', onclick: () => openSheet({
             title: 'Get up from the table?',
             body: `You can come back any time with code ${G.code}.`,
@@ -305,7 +336,7 @@ Screens.shelf = () => {
     const res = (G.table && G.table.results) || {};
     const short = (n) => String(n || '').split(' ')[0];
     const cells = [h('span'), h('span', { class: 'hd n', title: myName() }, short(myName())), h('span', { class: 'hd n', title: partnerName() }, short(partnerName()))];
-    for (const key of Object.keys(GAMES).filter((k) => !GAMES[k].soon)) {
+    for (const key of Object.keys(GAMES).filter((k) => !GAMES[k].soon && !GAMES[k].local)) {
       let me = 0, them = 0;
       for (const id in res) { const r = res[id]; if (r.g !== key) continue; if (r.w === G.seat) me++; else if (r.w === other(G.seat)) them++; }
       cells.push(h('span', null, GAMES[key].name), h('span', { class: 'n' }, me), h('span', { class: 'n' }, them));
@@ -354,7 +385,7 @@ Screens.match = () => {
       howToDone = Pref.get('howto:' + m.id) === '1' || Pref.get('howto-skip:' + m.game) === '1' || hasProgress(m);
       setBar({ title: GAMES[m.game].name, left: [
         h('button', { class: 'icon-btn', html: ICON.back, 'aria-label': 'Back to the shelf', onclick: confirmLeave }),
-        h('button', { class: 'icon-btn', html: ICON.help, 'aria-label': 'How to play', onclick: () => { Sound.tap(); showHowTo(m.game); } }),
+        h('button', { class: 'icon-btn', html: ICON.help, 'aria-label': 'How to play', onclick: () => { Sound.tap(); if (m.game === 'st') STONKS.rules(); else showHowTo(m.game); } }),
       ] });
       phaseEl = h('div', { class: 'phase' });
       el.append(phaseEl);
@@ -364,7 +395,7 @@ Screens.match = () => {
     update() {
       const m = G.match; if (!m) return;
       const st = rpsState(m);
-      const want = !howToDone ? 'howto' : (!st.starter || !introDone) ? 'rps' : m.game;
+      const want = !howToDone ? 'howto' : (!st.starter || !introDone) ? 'rps' : (m.game === 'hu' && m.hueVersion === 2 && !m.hueRules) ? 'hue-rules' : m.game;
       if (want !== phaseName) setPhase(want);
       phase && phase.update(m);
     },
@@ -384,9 +415,11 @@ Screens.match = () => {
     };
     if (name === 'howto') phase = makeHowTo(box, ctx, G.match.game);
     else if (name === 'rps') phase = makeRPS(box, ctx);
+    else if (name === 'hue-rules') phase = makeHueRules(box);
     else if (name === 'c4') phase = makeC4(box, ctx);
     else if (name === 'hu') phase = makeHU(box, ctx);
     else if (name === 'ip') phase = makeIP(box, ctx);
+    else if (name === 'st') phase = makeST(box, ctx);
     else phase = makeBS(box, ctx);
   }
   function confirmLeave() {

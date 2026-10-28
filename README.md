@@ -1,13 +1,14 @@
 # Our Game Shelf
 
-Connect Four and Battleships for two, played on two phones wherever you both are.
+Connect Four, Battleships, Hues and IPOs for two phones, plus STONKS as the fifth shelf game.
 One of you sets up a table and sends the invite; the other joins with the four-letter code.
 Rock, paper, scissors decides who goes first. A short how-to-play card opens every new game,
 games can be saved and carried on later, and you can send each other quick reactions and notes.
+Recent tables remembers codes and player names on the current device, with a checked Rejoin action.
 
 It's a static site on Firebase Hosting. Games are stored in Firestore and kept in sync live;
 who's at the table (and where their finger is) goes through the Realtime Database.
-There is no build step.
+There is no build step. STONKS uses the same two-phone table flow; an optional local pass-and-play room is also available.
 
 ## Run it on your computer
 
@@ -69,3 +70,26 @@ npm test                          # starts the emulators; two phones play a full
 ```
 
 See `CLAUDE.md` for how the code is organised.
+
+## Hues
+
+For new games, the best-of-three RPS winner chooses Custom or Official-style rules before dealing.
+Both use the painted Hues cards. Custom allows matching-number groups, draw stacking, a turn after
+paying a penalty, and two draw-pile shuffles each. Official-style uses single-card plays and skips
+the player who pays a draw penalty. The choice screen explains the differences.
+
+Declare Hues only at one card; every draw resets it. Call out unlocks two seconds after the receiving
+phone shows its new turn, and never penalizes automatically. Colour selection keeps your hand visible.
+Older saved games retain their original rules. See [Hues rules and sync notes](docs/hues-rules.md).
+
+## STONKS
+
+Select the fifth painted box on the shelf to play on two phones using the existing invite, RPS, chat and save/resume flow. Only your own hand appears on your phone; portfolios and Treasuries are shared. The optional local pass-and-play prototype is available directly at `http://localhost:3000/?stonks=1` for development checks.
+
+New STONKS games automatically place Companies and Funding on the table, leaving actions and Revenue Calls in hand. Banking an action is free, even after all three plays. Tap a colour/Treasury stack to expand or collapse it, and tap an expanded two-colour wild to flip it. Older saved games retain their original rules; start a new game for these house rules.
+
+The document’s 106 playable cards and four References are transcribed in [structured card data](docs/stonks-cards.json). Names, colours, values, quantities and effects are preserved. Two-player RPS setup and the automatic-placement/free-banking rules follow the user's explicit overrides.
+
+`npm test` runs the STONKS rules scenarios and the full browser suite for the existing four games plus STONKS. `npm run test:rules` runs just the pure rules checks.
+
+STONKS follows the existing trusted-client Firebase model: hands are hidden in the UI but inspectable through developer tools. Server-enforced secrecy would need authentication, server-side validation/shuffling, and private per-player hand documents. [Implementation notes and screen plan](docs/stonks.md) describe the current local privacy limits and online work.
