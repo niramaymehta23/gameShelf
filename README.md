@@ -1,6 +1,6 @@
 # Our Game Shelf
 
-Connect Four, Battleships and Hues for two, played on two phones wherever you both are.
+Connect Four, Battleships, Hues and Quickfire for two, played on two phones wherever you both are.
 One of you sets up a table and sends the invite; the other joins with the four-letter code.
 Rock, paper, scissors decides who goes first. A short how-to-play card opens every new game,
 games can be saved and carried on later, and you can send each other quick reactions and notes.
@@ -82,3 +82,10 @@ Declare Hues only at one card; every draw resets it. Call out unlocks two second
 phone shows its new turn, and never penalizes automatically. Colour selection keeps your hand visible.
 Older saved games retain their original rules. See [Hues rules and sync notes](docs/hues-rules.md).
 
+## Quickfire
+
+Two races in one box. The rock, paper, scissors winner picks Mixed (first to 10), Words or Sums (first to 5),
+the word length and whether they pick the first or last letter, and add, subtract or multiply. Each round you
+both pick in secret, then race: type the middle letters of a real word that fits S _ _ _ T, or the answer to
+67 − 24. Each phone times its own player from the moment the puzzle appears on that screen, so a slow
+connection doesn't decide who wins. The dictionary is built by `tools/make_words.py`.

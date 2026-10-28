@@ -237,6 +237,16 @@ const GAMES = {
       { t: 'Empty your hand to win', d: 'If your last card starts a +2 or +4 chain, it has to finish first, and your partner still gets the turn they’re owed.' },
     ],
   },
+  qf: {
+    name: 'Quickfire', cls: 'qf', art: 'art/box-qf.png',
+    howTo: [
+      { t: 'Who sets it up', d: 'Rock, paper, scissors, best of three. The winner picks Mixed (first to 10), Words or Sums (first to 5), the word length, first or last letter, and add, subtract or multiply. That stays for the whole game.', art: 'art/rps-rock.png' },
+      { t: 'Words', d: 'You each pick a letter in secret: the winner’s goes on their end of the word, yours on the other. Then S _ _ _ T appears. Type the middle letters of any real word.' },
+      { t: 'Sums', d: 'You each pick a number in secret (1–100, or 0–30 to multiply). Then 67 − 24 = ? appears, always bigger minus smaller. Type the answer on the keypad and tap =. A wrong answer locks the keypad for a moment.' },
+      { t: 'Fair timing', d: 'Each phone times you from the moment the puzzle appears on your screen, so a slow connection doesn’t cost you. The quickest right answer takes the round.' },
+      { t: 'Stuck?', d: 'Give up, and your partner can take their time. If you both give up, nobody scores. Letters no everyday word fits are dealt again.' },
+    ],
+  },
 };
 
 // ---------------- how to play ----------------
@@ -374,12 +384,13 @@ Screens.match = () => {
     update() {
       const m = G.match; if (!m) return;
       const st = rpsState(m);
-      const want = !howToDone ? 'howto' : (!st.starter || !introDone) ? 'rps' : (m.game === 'hu' && m.hueVersion === 2 && !m.hueRules) ? 'hue-rules' : m.game;
+      const want = !howToDone ? 'howto' : (!st.starter || !introDone) ? 'rps' : (m.game === 'hu' && m.hueVersion === 2 && !m.hueRules) ? 'hue-rules' : (m.game === 'qf' && !qfSetup(m)) ? 'qf-setup' : m.game;
       if (want !== phaseName) setPhase(want);
       phase && phase.update(m);
     },
     onPeers() { phase && phase.onPeers && phase.onPeers(); },
-    relayout() { if (phaseName) { const n = phaseName; phaseName = null; setPhase(n); phase.update(G.match); } },
+    // a phase that lays itself out in CSS handles resizes itself (Quickfire: the keyboard coming up must not rebuild it)
+    relayout() { if (phase && phase.relayout) { phase.relayout(); return; } if (phaseName) { const n = phaseName; phaseName = null; setPhase(n); phase.update(G.match); } },
     unmount() { phase && phase.destroy && phase.destroy(); Wake.off(); closeSheet(); },
   };
   function setPhase(name) {
@@ -397,6 +408,8 @@ Screens.match = () => {
     else if (name === 'hue-rules') phase = makeHueRules(box);
     else if (name === 'c4') phase = makeC4(box, ctx);
     else if (name === 'hu') phase = makeHU(box, ctx);
+    else if (name === 'qf-setup') phase = makeQFSetup(box);
+    else if (name === 'qf') phase = makeQF(box, ctx);
     else phase = makeBS(box, ctx);
   }
   function confirmLeave() {

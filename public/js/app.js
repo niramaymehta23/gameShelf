@@ -120,14 +120,14 @@ function watchMatch(id) {
   }, (e) => console.warn('match listener', e));
 }
 // ---------- opening, joining, saving and quitting games ----------
-// table.saved  {c4: matchId|null, bs: …, hu: …}  the game of each kind you can carry on later
+// table.saved  {c4: matchId|null, bs: …, hu: …, qf: …}  the game of each kind you can carry on later
 // table.notice {id, by, kind, game, match} what one of you just did, for the other phone to show:
 //   'saved' saved and quit · 'quit' quit without saving (the other decides: keep it saved, or quit too)
 //   'discarded' both quit, so it's gone · 'declined' said "not now" to a game the other opened
 // match.joined {host, guest}  who is in; whoever opens a game is, the other phone is asked to join
 // match.quit   {host, guest}  who chose to quit without saving
 const joinedBy = (m, seat) => !m.joined || m.joined[seat] !== false; // older matches have no joined map: both are in
-const hasProgress = (m) => !!m && (['rps', 'moves', 'shots', 'plays'].some((k) => Object.keys(m[k] || {}).length > 0) || !!(m.fleets && (m.fleets.host || m.fleets.guest)));
+const hasProgress = (m) => !!m && (['rps', 'moves', 'shots', 'plays', 'picks', 'ans'].some((k) => Object.keys(m[k] || {}).length > 0) || !!(m.fleets && (m.fleets.host || m.fleets.guest)));
 const matchPath = (id) => `tables/${G.code}/matches/${id}`;
 const notice = (kind, m) => ({ id: Date.now().toString(36) + rid().slice(0, 4), by: G.seat, kind, game: m.game, match: m.id });
 

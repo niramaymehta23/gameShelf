@@ -771,3 +771,68 @@ img { -webkit-user-drag: none; }
 .landing > * { flex-shrink: 0; }
 .hu-shuffle { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-height: 52px; font-weight: 800; font-size: 11px; padding: 6px 4px; }
 .hu-shuffle small { font: 700 17px var(--hand); }
+
+/* ---------- Quickfire: letter tiles and a sum on a taped card, a paper keypad ---------- */
+.gbox.qf { rotate: .8deg; }
+.qf { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 560px; margin: 0 auto; padding-top: 4px; }
+.qf-sb { flex: none; }
+.qf-sb .sb-side > b { font: 700 34px/1 var(--hand); color: var(--navy); }
+.qf-card { position: relative; flex: none; display: flex; flex-direction: column; gap: 12px; padding: 18px 14px 16px; rotate: -.6deg; color: var(--ink); }
+.qf-card > .tape { top: -11px; left: 42%; }
+.qf-head { display: flex; justify-content: space-between; align-items: baseline; min-height: 26px; }
+.qf-clock { font-size: 24px; color: var(--navy); font-variant-numeric: tabular-nums; }
+.qf-entry { position: relative; }
+/* the real input lies invisibly over the tiles, as in the code entry: tapping the tiles types */
+.qf-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; border: 0; background: none; font-size: 16px; color: transparent; caret-color: transparent; text-transform: uppercase; }
+.qf-tap { position: absolute; left: 0; right: 0; bottom: -6px; text-align: center; font: 700 18px var(--hand); color: var(--poppy); pointer-events: none; }
+.qf-rack { gap: 6px; padding: 2px 0 8px; }
+.qf-rack .tile { flex: 0 1 56px; width: auto; min-width: 0; }
+.qf-rack .tile.fixed { color: var(--poppy-deep); background-color: #f3d79b; }
+.qf-rack .tile.back { color: var(--cream); background-color: var(--navy); background-image: var(--t-blue); background-size: cover; font-size: clamp(20px, 7vw, 28px); }
+.qf-rack .tile.shown { animation: tileIn .32s var(--ease-spring) both; }
+.qf-rack .tile.shown:nth-child(3) { animation-delay: .05s; } .qf-rack .tile.shown:nth-child(4) { animation-delay: .1s; } .qf-rack .tile.shown:nth-child(5) { animation-delay: .15s; }
+.qf-sum { display: flex; justify-content: center; align-items: baseline; flex-wrap: wrap; gap: .28em; min-height: 64px; font: 400 clamp(36px, 11vw, 50px)/1.15 var(--display); color: var(--ink); font-variant-numeric: tabular-nums; }
+.qf-sum .op { color: var(--poppy); }
+.qf-sum .ans { min-width: 1.6em; text-align: center; color: var(--navy); border-bottom: 3px solid var(--ochre); }
+.qf-sum .ans.empty { color: var(--ink-mute); }
+.qf-sum .ans.shown { animation: tileIn .32s var(--ease-spring) both; }
+.qf-num { min-width: 1.8em; padding: 0 .14em; text-align: center; border-radius: 7px; background-color: #efe0bf; background-image: var(--t-paper); background-size: 200px; background-blend-mode: multiply; box-shadow: inset 0 -2px 0 rgba(120,90,40,.22), 0 2px 0 #b99d6b; }
+.qf-num.typing { outline: 3px solid var(--ochre); outline-offset: 2px; }
+.qf-num.back { color: var(--cream); background-color: var(--navy); background-image: var(--t-blue); background-size: cover; box-shadow: 0 2px 0 var(--navy-deep); }
+.qf-card.racing { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .5), 0 0 0 3px rgba(226, 168, 60, .55), 0 10px 16px -10px rgba(16, 26, 46, .6); }
+.qf-result { display: grid; gap: 2px; text-align: center; font-family: var(--hand); color: var(--ink-soft); }
+.qf-result b { font: 400 24px/1.1 var(--display); color: var(--ink); }
+.qf-result .times { font-size: 22px; color: var(--navy); }
+.qf-result .also { font-size: 19px; }
+.qf-status { flex: none; }
+.qf-status small { font-size: 19px; opacity: .85; }
+.qf-actions { display: flex; justify-content: center; gap: 10px; flex: none; }
+.qf-actions .btn { flex: 0 1 260px; }
+.qf-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: auto; flex: none; touch-action: manipulation; }
+.qf-key { min-height: 56px; border-radius: 8px; font: 400 28px/1 var(--display); color: var(--ink); background-color: #efe0bf; background-image: var(--t-paper); background-size: 200px; background-blend-mode: multiply; box-shadow: inset 0 1px 0 rgba(255,255,255,.7), inset 0 -3px 0 rgba(120,90,40,.22), 0 2px 0 #b99d6b, 0 4px 8px rgba(16,26,46,.3); -webkit-user-select: none; user-select: none; }
+.qf-key:active { transform: translateY(2px); box-shadow: inset 0 -1px 0 rgba(120,90,40,.22), 0 1px 0 #b99d6b; }
+.qf-key.del { font: 700 24px var(--body); color: var(--ink-soft); }
+.qf-key.ok { font: 800 18px var(--body); color: #fbf3e6; background-color: var(--poppy); background-image: none; box-shadow: inset 0 -3px 0 rgba(0,0,0,.18), 0 2px 0 var(--poppy-deep); }
+/* the keyboard is up: give it the room, keep the tiles, clock and status above it */
+body.kb-open #app { height: var(--vvh, 100%); }
+body.kb-open .qf { gap: 6px; }
+body.kb-open .qf-sb { padding-block: 4px; }
+body.kb-open .qf-sb .sb-side > b { font-size: 26px; }
+body.kb-open .qf-card { padding-block: 12px 10px; gap: 8px; }
+@media (max-height: 560px) { .qf-sb .sb-side > b { font-size: 26px; } .qf-card { padding-block: 12px 10px; gap: 8px; } .qf-key { min-height: 46px; } }
+
+.qf-setup-wrap { flex: 1; min-height: 0; overflow: auto; padding: 14px 2px; }
+.qf-setup { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 24px 18px; margin: 6px auto; max-width: 540px; rotate: -.5deg; color: var(--ink); }
+.qf-setup > .tape { top: -11px; left: 40%; }
+.qf-setup h1 { margin: 4px 0; }
+.qf-setup .hand-note { color: var(--navy); text-shadow: none; }
+.qf-setup h3 { margin: 8px 0 0; font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-mute); }
+.qf-opts { display: grid; gap: 8px; }
+.qf-opts.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.qf-opts.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.qf-opt { display: grid; place-content: center; gap: 2px; min-height: 56px; padding: 8px 4px; border-radius: 7px; text-align: center; color: var(--ink); background-color: #efe0bf; background-image: var(--t-paper); background-size: 200px; background-blend-mode: multiply; box-shadow: inset 0 -3px 0 rgba(120,90,40,.2), 0 2px 0 #b99d6b; }
+.qf-opt b { font: 400 19px/1.1 var(--display); }
+.qf-opt small { font: 700 16px/1.1 var(--hand); color: var(--ink-soft); }
+.qf-opt.on { color: #fbf3e6; background-color: var(--navy); background-image: none; box-shadow: inset 0 -3px 0 rgba(0,0,0,.25), 0 2px 0 var(--navy-deep); }
+.qf-opt.on small { color: var(--cream); }
+.qf-go { margin-top: 10px; }

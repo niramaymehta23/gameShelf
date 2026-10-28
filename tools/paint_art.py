@@ -455,3 +455,42 @@ def box_hu(W=360, H=480):
 for k, v in HUE.items():
     hue_face(k, v)
 hue_wild(); hue_back(); box_hu()
+
+# ================= Quickfire (Words and Sums) =================
+# The box: a cream stopwatch on a poppy wash, with three letter tiles under it: S, a blank, and a
+# plus, for the two races inside.
+def box_qf(W=360, H=480):
+    s = Sheet(W, H)
+    cx, cy, R = 180, 196, 104
+    tiles = [(96, 392), (180, 392), (264, 392)]
+    reserve = disk(W, H, cx, cy, R + 10) | rrect(W, H, cx - 18, cy - R - 44, cx + 18, cy - R - 2, 5) | ellipse(W, H, cx + 92, cy - 92, 19, 14, -0.8)
+    for x, y in tiles:
+        reserve |= rrect(W, H, x - 34, y - 36, x + 34, y + 36, 8)
+    s.wash(rrect(W, H, 8, 8, W - 8, H - 8, 10) & ~reserve, (186, 70, 52), strength=0.9, bloom=0.42, edge=0.7, gran=0.3, rough=0.05)
+    # the watch: ochre rim, cream face, crown and button, ink ticks and hands
+    s.wash(disk(W, H, cx, cy, R + 8) & ~disk(W, H, cx, cy, R - 6), OCHRE, strength=0.92, edge=1.1, rough=0.08)
+    s.wash(disk(W, H, cx, cy, R - 6), (244, 232, 206), strength=0.35, bloom=0.5, rough=0.08)
+    s.wash(rrect(W, H, cx - 14, cy - R - 40, cx + 14, cy - R - 6, 4), OCHRE, strength=0.9, rough=0.05)
+    s.wash(ellipse(W, H, cx + 92, cy - 92, 15, 10, -0.8), OCHRE, strength=0.95, edge=1.1, rough=0.04)
+    ticks = []
+    for i in range(12):
+        a = i * math.pi / 6
+        r0 = R - 22 if i % 3 else R - 30
+        ticks.append([(cx + r0 * math.cos(a), cy + r0 * math.sin(a)), (cx + (R - 12) * math.cos(a), cy + (R - 12) * math.sin(a))])
+    s.ink([circle_path(cx, cy, R + 8), circle_path(cx, cy, R - 6)] + ticks, width=2.2)
+    s.ink([[(cx, cy), (cx + 42, cy - 52)], [(cx, cy), (cx - 8, cy + 66)]], width=4.2)
+    s.wash(disk(W, H, cx, cy, 9), RED, strength=1, rough=0.03)
+    # three cream tiles with ink marks
+    for x, y in tiles:
+        s.wash(rrect(W, H, x - 30, y - 32, x + 30, y + 32, 7), (236, 214, 170), strength=0.55, edge=0.9, rough=0.06)
+        s.ink([[(x - 30, y - 32), (x + 30, y - 32), (x + 30, y + 32), (x - 30, y + 32), (x - 30, y - 32)]], width=1.8, alpha=0.6)
+    x, y = tiles[0]
+    s.ink([[(x + 14, y - 16), (x + 4, y - 20), (x - 10, y - 16), (x - 12, y - 6), (x - 2, y), (x + 10, y + 6), (x + 12, y + 16), (x, y + 21), (x - 14, y + 16)]], width=4.4)
+    x, y = tiles[1]
+    s.ink([[(x - 14, y + 18), (x + 14, y + 18)]], width=4.4)
+    x, y = tiles[2]
+    s.ink([[(x - 16, y), (x + 16, y)], [(x, y - 16), (x, y + 16)]], width=4.4)
+    splatter(s, OCHRE, 7, (30, 30, 330, 90), 5)
+    save_rgba(s.rgba(), 'box-qf.png')
+
+box_qf()

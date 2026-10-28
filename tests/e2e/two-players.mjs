@@ -368,8 +368,8 @@ try {
   check(/Hues [01] [01]/.test((await a.locator('.score-grid').innerText()).replace(/\s+/g, ' ')), 'score sheet has a Hues row with the win');
   check(!(await a.locator('.gbox.gw').count()), 'Guess Who? is off the shelf');
 
-  check(await a.locator('.gbox').count() === 3, 'three games on the shelf');
-  await snap(a, '24-shelf-three');
+  check(await a.locator('.gbox').count() === 4, 'four games on the shelf');
+  await snap(a, '24-shelf-four');
 
   await a.locator('#chatBtn').click();
   await snap(a, '11-chat-sheet');

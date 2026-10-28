@@ -173,16 +173,17 @@ function makeRPS(box, ctx) {
     const line = game === 'c4'
       ? (meFirst ? 'You’re red, and red drops first.' : `You’re yellow. ${P} is red and drops first.`)
       : game === 'hu' ? (meFirst ? 'Seven cards each, and you play the first one.' : `Seven cards each, and ${P} plays the first one.`)
+      : game === 'qf' ? (meFirst ? 'You set up the race: Words, Sums or both.' : `${P} sets up the race: Words, Sums or both.`)
       : (meFirst ? 'Hide your fleet, then you fire the first shot.' : `Hide your fleet, then ${P} fires the first shot.`);
     let done = false;
     const finish = () => { if (done || dead) return; done = true; Sound.tap(); ctx.onIntroDone(); };
     const card = h('div', { class: 'starter-card' },
       h('div', { class: 'paper' },
         h('div', { class: 'tape', style: 'top:-12px;left:50%;margin-left:-44px;transform:rotate(-3deg)' }),
-        game === 'c4' ? h('div', { class: 'disc-demo disc ' + (meFirst ? 'red' : 'yellow') }) : h('img', { class: 'wc', src: game === 'hu' ? 'art/box-hu.png' : 'art/box-bs.png', alt: '', style: 'width:64px;height:auto;border-radius:4px' }),
+        game === 'c4' ? h('div', { class: 'disc-demo disc ' + (meFirst ? 'red' : 'yellow') }) : h('img', { class: 'wc', src: game === 'hu' ? 'art/box-hu.png' : game === 'qf' ? 'art/box-qf.png' : 'art/box-bs.png', alt: '', style: 'width:64px;height:auto;border-radius:4px' }),
         h('div', { class: 'display h2', style: 'color:var(--ink)' }, meFirst ? 'You go first!' : `${P} goes first`),
         h('div', { class: 'line' }, line),
-        h('button', { class: 'btn btn-felt', onclick: finish }, game === 'c4' ? 'To the board' : game === 'hu' ? 'Deal the cards' : 'Place my ships'),
+        h('button', { class: 'btn btn-felt', onclick: finish }, game === 'c4' ? 'To the board' : game === 'hu' ? 'Deal the cards' : game === 'qf' ? 'On your marks' : 'Place my ships'),
       ));
     choices.style.opacity = '0'; hint.textContent = '';
     root.append(card);
