@@ -170,7 +170,7 @@ function makeBS(box, ctx) {
       if (want !== subName) {
         sub && sub.destroy();
         box.replaceChildren();
-        const inner = h('div', { style: 'flex:1;display:flex;flex-direction:column;min-height:0;animation:screenIn .4s var(--ease-out) both' });
+        const inner = h('div', { class: 'phase-box' });
         box.append(inner);
         subName = want;
         sub = want === 'place' ? makePlacement(inner) : makeBattle(inner);
@@ -197,6 +197,7 @@ function makePlacement(box) {
   const availH = bh - 30 - 136 - 46 - 56 - 48;
   const cell = Math.floor(Math.max(22, Math.min((bw - 6) / 10.95, availH / 10.95, 44)));
   const dcell = Math.max(18, Math.round(cell * 0.72));
+  const ins = Math.round(cell * 0.12); // a ship's inset from its squares, as posShip draws it
   const S = makeSeaGrid(cell);
   const status = h('div', { class: 'bs-status status-line', 'aria-live': 'polite' });
   const dock = h('div', { class: 'dock paper', 'aria-label': 'Ships waiting to be placed' });
@@ -259,11 +260,12 @@ function makePlacement(box) {
     if (saving) return;
     Sound.pick();
     saving = true; draw();
-    if (locked) await write(`tables/${G.code}/matches/${m.id}`, { fleets: { [seat]: null } });
-    else if (list().length === FLEET.length) { vibrate([10, 30, 10]); await write(`tables/${G.code}/matches/${m.id}`, { fleets: { [seat]: list() } }); }
+    if (locked) await write(matchPath(m.id), { fleets: { [seat]: null } });
+    else if (list().length === FLEET.length) { vibrate([10, 30, 10]); await write(matchPath(m.id), { fleets: { [seat]: list() } }); }
     saving = false; if (!dead) draw();
   }
-  function shake(el) { if (!el) return; el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); Sound.lose(); vibrate(30); }
+  // a ship that can't go there shakes (the CSS .shake animation)
+  function refuse(el) { if (!el) return; el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); Sound.lose(); vibrate(30); }
   function rotate(id) {
     const s = ships[id]; const len = FLEET_BY[id].len;
     const nv = !s.v;
@@ -273,7 +275,7 @@ function makePlacement(box) {
         ships[id] = cand; lastV[id] = nv; selected = id; Sound.tap(); vibrate(6); draw(); return;
       }
     }
-    selected = id; draw(); shake(els[id]); toast('No room to turn it there');
+    selected = id; draw(); refuse(els[id]); toast('No room to turn it there');
   }
   function placeAt(id, r, c) {
     const v = !!lastV[id];
@@ -325,14 +327,14 @@ function makePlacement(box) {
     const f = FLEET_BY[drag.id];
     fl = h('div', { class: 'ship dragging' + (drag.v ? ' v' : '') });
     fl.style.position = 'fixed';
-    fl.style.width = (drag.v ? cell : f.len * cell) - 2 * Math.round(cell * 0.12) + 'px';
-    fl.style.height = (drag.v ? f.len * cell : cell) - 2 * Math.round(cell * 0.12) + 'px';
+    fl.style.width = (drag.v ? cell : f.len * cell) - 2 * ins + 'px';
+    fl.style.height = (drag.v ? f.len * cell : cell) - 2 * ins + 'px';
     document.body.append(fl);
     if (els[drag.id]) els[drag.id].style.opacity = '.25';
     Sound.tap(); vibrate(6);
   }
   function moveFloat(x, y) {
-    const d = drag, f = FLEET_BY[d.id], ins = Math.round(cell * 0.12);
+    const d = drag;
     const ly = y - liftFor(d);
     const gr = S.grid.getBoundingClientRect();
     const cr = Math.floor((ly - gr.top) / cell), cc = Math.floor((x - gr.left) / cell);
@@ -356,7 +358,7 @@ function makePlacement(box) {
     if (fl) { fl.remove(); fl = null; }
     if (els[d.id]) els[d.id].style.opacity = '';
     if (d.target && d.valid) { ships[d.id] = d.target; lastV[d.id] = d.v; selected = null; Sound.clack(); vibrate(10); draw(); return; }
-    if (d.target && !d.valid) { draw(); shake(els[d.id]); toast('Ships can’t overlap'); return; }
+    if (d.target && !d.valid) { draw(); refuse(els[d.id]); toast('Ships can’t overlap'); return; }
     if (!d.fromDock) { delete ships[d.id]; selected = null; Sound.tap(); }
     draw();
   }
@@ -389,7 +391,7 @@ function makeBattle(box) {
   const track = h('div', { style: `display:flex;width:${W * 2}px;transition:transform .45s var(--ease-out)` }, T.wrap, Hm.wrap);
   const seas = h('div', { style: `width:${W}px;max-width:100%;overflow-x:clip;position:relative;flex:none` }, track);
   const myRet = T.reticle(); const theirRet = Hm.reticle('partner');
-  const btnT = h('button', null, `${P.split(' ')[0]}’s waters`, h('i', { class: 'badge' }));
+  const btnT = h('button', null, `${firstName(P)}’s waters`, h('i', { class: 'badge' }));
   const btnH = h('button', null, 'Your fleet', h('i', { class: 'badge' }));
   btnT.addEventListener('click', () => { manual = true; setView('target'); Sound.tap(); });
   btnH.addEventListener('click', () => { manual = true; setView('home'); Sound.tap(); });
@@ -418,7 +420,7 @@ function makeBattle(box) {
     const sunk = new Set(shownShots().filter((s) => s.sunk && s.target === owner).map((s) => s.sunk));
     // a small label, then the five ships as 3 + 2, each with its length as little hull squares
     trackEl.replaceChildren(
-      h('div', { class: 'who' }, owner === seat ? 'Your fleet' : `${P.split(' ')[0]}’s fleet`),
+      h('div', { class: 'who' }, owner === seat ? 'Your fleet' : `${firstName(P)}’s fleet`),
       h('div', { class: 'ships' }, ...FLEET.map((f) => h('div', { class: 'ship-tag' + (sunk.has(f.id) ? ' sunk' : ''), 'aria-label': `${f.name}, ${f.len} squares${sunk.has(f.id) ? ', sunk' : ''}` },
         h('b', null, f.name), h('span', { class: 'len' }, ...Array.from({ length: f.len }, () => h('i')))))));
   }
@@ -475,7 +477,7 @@ function makeBattle(box) {
   T.grid.addEventListener('click', (e) => {
     const p = T.at(e.clientX, e.clientY); if (!p) return;
     if (!canFire()) {
-      if (st && st.turn === opp) { status.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'translateX(0)' }], { duration: 260 }); }
+      if (st && st.turn === opp) shake(status, 6, 260, 'transform');
       return;
     }
     if (st.shotBy[seat].has(p.r * 10 + p.c)) { toast(`You’ve already fired at ${coord(p.r, p.c)}`); return; }
@@ -488,7 +490,7 @@ function makeBattle(box) {
     clearAim();
     fireBtn.disabled = true;
     vibrate(12);
-    write(`tables/${G.code}/matches/${m.id}`, { shots: { ['s' + pad3(pendingN)]: { r: a.r, c: a.c } } }).then((ok) => { if (!ok) { pending = false; paint(); } });
+    write(matchPath(m.id), { shots: { ['s' + pad3(pendingN)]: { r: a.r, c: a.c } } }).then((ok) => { if (!ok) { pending = false; paint(); } });
   }
   async function animateShot(s) {
     const mine = s.shooter === seat;
@@ -580,7 +582,7 @@ function makeBattle(box) {
     status.replaceChildren(h('b', null, won ? 'Victory. ' : 'Fleet lost. '), body);
     bottom.replaceChildren(endBar(m));
     if (!won) setView('home'); else setView('target');
-    if (!quiet) setTimeout(() => { if (!dead && G.matchId === m.id) endSheet(m, { title: won ? `You sank ${P}’s whole fleet!` : `${P} sank your whole fleet`, body, good: won }); }, 900);
+    if (!quiet) endSheetSoon(m, () => dead, 900, { title: won ? `You sank ${P}’s whole fleet!` : `${P} sank your whole fleet`, body, good: won });
   }
 
   return {

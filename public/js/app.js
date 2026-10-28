@@ -3,7 +3,7 @@
 const G = {
   dev: null, name: '', code: null, table: null, tableMissing: false, seat: null,
   matchId: null, match: null, joining: false, claimed: false, leftByMe: false, pendingJoin: null,
-  unsubTable: null, unsubMatch: null,
+  unsubTable: null, unsubMatch: null, waitToast: null,
 };
 const partnerName = () => (G.table && G.seat && G.table[other(G.seat)] && G.table[other(G.seat)].name) || 'Your partner';
 const myName = () => (G.table && G.seat && G.table[G.seat] && G.table[G.seat].name) || G.name || 'You';
@@ -46,6 +46,22 @@ async function write(path, patch, { set = false } = {}) {
     else toast('Couldn’t save that. Try again.');
     return false;
   }
+}
+
+const tablePath = () => 'tables/' + G.code;
+const matchPath = (id) => `${tablePath()}/matches/${id}`;
+
+// The RPS winner sets something once for the whole match (the Hues rules, the Quickfire setup). It's
+// written in a transaction, so it only lands if nobody has set it yet and this phone still won.
+async function chooseOnce(m, field, value, taken, failed) {
+  const path = matchPath(m.id);
+  try {
+    await Net.timed(FB.fs.runTransaction(async (tx) => {
+      const ref = FB.fs.doc(path), snap = await tx.get(ref), latest = snap.data();
+      if (!snap.exists || rpsState(latest).starter !== G.seat || latest[field]) throw Error(taken);
+      tx.update(ref, { [field]: value });
+    }));
+  } catch (e) { toast(e.message || failed); }
 }
 
 function openTable(code, { joining = false } = {}) {
@@ -97,7 +113,7 @@ function resolveSeat() {
     G.seat = null;
     if (!t.guest && G.joining && !G.claimed) {
       G.claimed = true;
-      write('tables/' + G.code, { guest: { dev: G.dev, name: G.name || 'Player 2' } });
+      write(tablePath(), { guest: { dev: G.dev, name: G.name || 'Player 2' } });
     }
   }
   if (G.seat) Live.set({ seat: G.seat });
@@ -106,12 +122,12 @@ function watchMatch(id) {
   if (G.unsubMatch) G.unsubMatch();
   G.unsubMatch = null; G.matchId = id; G.match = null;
   if (!id) return;
-  G.unsubMatch = Net.doc(`tables/${G.code}/matches/${id}`).onSnapshot((s) => {
+  G.unsubMatch = Net.doc(matchPath(id)).onSnapshot((s) => {
     if (G.matchId !== id) return;
     const prev = G.match;
     G.match = s.exists ? s.data() : null;
     // a game that's no longer on the shelf (IPOs, STONKS): put it away and go back to the shelf
-    if (G.match && !GAMES[G.match.game]) { G.match = null; if (G.table && G.table.current === id) write('tables/' + G.code, { current: null }); return; }
+    if (G.match && !GAMES[G.match.game]) { G.match = null; if (G.table && G.table.current === id) write(tablePath(), { current: null }); return; }
     if (prev && G.match && G.seat && !joinedBy(prev, other(G.seat)) && joinedBy(G.match, other(G.seat))) {
       if (G.waitToast) { G.waitToast.remove(); G.waitToast = null; }
       toast(`${partnerName()} joined`); Sound.ding();
@@ -128,35 +144,34 @@ function watchMatch(id) {
 // match.quit   {host, guest}  who chose to quit without saving
 const joinedBy = (m, seat) => !m.joined || m.joined[seat] !== false; // older matches have no joined map: both are in
 const hasProgress = (m) => !!m && (['rps', 'moves', 'shots', 'plays', 'picks', 'ans'].some((k) => Object.keys(m[k] || {}).length > 0) || !!(m.fleets && (m.fleets.host || m.fleets.guest)));
-const matchPath = (id) => `tables/${G.code}/matches/${id}`;
-const notice = (kind, m) => ({ id: Date.now().toString(36) + rid().slice(0, 4), by: G.seat, kind, game: m.game, match: m.id });
+const notice = (kind, m) => ({ id: newId(), by: G.seat, kind, game: m.game, match: m.id });
 
 async function startMatch(game) {
-  const id = Date.now().toString(36) + rid().slice(0, 4);
+  const id = newId();
   const ok = await write(matchPath(id), { id, game, ...(game === 'hu' ? { hueVersion: 2, hueRules: null } : {}), created: Date.now(), by: G.seat, seed: rid() + rid(), rps: {}, moves: {}, shots: {}, plays: {}, fleets: {}, joined: { [G.seat]: true, [other(G.seat)]: false }, quit: {} }, { set: true });
   // a new game takes the place of a saved one of the same kind
-  if (ok) await write('tables/' + G.code, { current: id, saved: { [game]: null } });
+  if (ok) await write(tablePath(), { current: id, saved: { [game]: null } });
 }
 async function resumeMatch(id) {
   const ok = await write(matchPath(id), { joined: { [G.seat]: true, [other(G.seat)]: false }, quit: {} });
-  if (ok) await write('tables/' + G.code, { current: id });
+  if (ok) await write(tablePath(), { current: id });
 }
 async function joinMatch(m) { await write(matchPath(m.id), { joined: { [G.seat]: true } }); }
 async function declineMatch(m) {
   G.leftByMe = true;
-  await write('tables/' + G.code, { current: null, notice: notice('declined', m) });
+  await write(tablePath(), { current: null, notice: notice('declined', m) });
 }
 async function saveAndQuit(m) {
   G.leftByMe = true;
   await write(matchPath(m.id), { quit: {} });
-  if (await write('tables/' + G.code, { current: null, saved: { [m.game]: m.id }, notice: notice('saved', m) })) toast('Saved. It’s on the shelf for next time.');
+  if (await write(tablePath(), { current: null, saved: { [m.game]: m.id }, notice: notice('saved', m) })) toast('Saved. It’s on the shelf for next time.');
 }
 async function quitGame(m) {
   G.leftByMe = true;
   const both = !!(m.quit && m.quit[other(G.seat)]);
   await write(matchPath(m.id), { quit: { [G.seat]: true } });
   // one quit only pauses the game: it stays saved until the other one quits too
-  const ok = await write('tables/' + G.code, both
+  const ok = await write(tablePath(), both
     ? { current: null, saved: { [m.game]: null }, notice: notice('discarded', m) }
     : { current: null, saved: { [m.game]: m.id }, notice: notice('quit', m) });
   if (ok) toast(both ? 'Game put away without saving.' : `You quit. ${partnerName()} can still keep it saved.`, 3200);
@@ -222,20 +237,24 @@ function syncInvite() {
 }
 async function backToShelf() {
   G.leftByMe = true;
-  await write('tables/' + G.code, { current: null });
+  await write(tablePath(), { current: null });
 }
 function recordResult(m, w) {
   if (!G.table || (G.table.results && G.table.results[m.id])) return;
   const finishedSaved = G.table.saved && G.table.saved[m.game] === m.id;
-  write('tables/' + G.code, { results: { [m.id]: { g: m.game, w } }, ...(finishedSaved ? { saved: { [m.game]: null } } : {}) });
+  write(tablePath(), { results: { [m.id]: { g: m.game, w } }, ...(finishedSaved ? { saved: { [m.game]: null } } : {}) });
 }
 
 // ---------- toast + sheet ----------
-function toast(text, ms = 2400) {
+// toasts and partner notes share one stack of at most three
+function stackToast(el) {
   const box = $('#toast');
-  const t = h('div', { class: 'toast' }, text);
-  box.append(t);
+  box.append(el);
   while (box.children.length > 3) box.firstChild.remove();
+}
+function toast(text, ms = 2400) {
+  const t = h('div', { class: 'toast' }, text);
+  stackToast(t);
   setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 260); }, ms);
   return t;
 }
@@ -255,7 +274,7 @@ function openSheet({ title, sub, body, art, actions = [], dismissible = true }) 
   const row = h('div', { class: 'btn-row', style: 'flex-direction:column' });
   for (const a of actions) {
     row.append(h('button', {
-      class: 'btn ' + (a.kind === 'primary' ? 'btn-primary' : a.kind === 'felt' ? 'btn-felt' : a.kind === 'ink' ? 'btn-ink' : 'btn-ghost'),
+      class: 'btn ' + ({ primary: 'btn-primary', felt: 'btn-felt', ink: 'btn-ink' }[a.kind] || 'btn-ghost'),
       onclick: () => { Sound.tap(); if (!a.keepOpen) closeSheet(); a.onClick && a.onClick(); },
     }, a.label));
   }
@@ -325,7 +344,7 @@ function presence() {
   const peer = Live.partner();
   const where = peer && peer.pres && peer.pres.screen;
   if (!p) return { state: 'gone', name: 'Partner', text: 'Waiting for your partner to join the table' };
-  const first = p.name.split(' ')[0];
+  const first = firstName(p.name);
   if (!Net.online) return { state: 'gone', name: first, text: 'You’re offline. Reconnecting…' };
   if (!peer) return { state: 'gone', name: first, text: `${p.name} isn’t connected right now` };
   if (where === cur.name.split(':')[0]) return { state: 'here', name: first, text: `${p.name} is here with you` };
@@ -418,12 +437,10 @@ function chatRain(e) {
 }
 // a taped note from your partner, in the same stack as toasts; tap it away or it goes by itself
 function chatNote(text) {
-  const box = $('#toast');
   const note = h('button', { class: 'chat-note' }, h('b', null, partnerName()), h('span', null, text));
   const bye = () => { if (!note.isConnected) return; note.classList.add('out'); setTimeout(() => note.remove(), 240); };
   note.addEventListener('click', bye);
-  box.append(note);
-  while (box.children.length > 3) box.firstChild.remove();
+  stackToast(note);
   setTimeout(bye, 4800);
 }
 Chat.onMessage((m, live) => {

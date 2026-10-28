@@ -122,28 +122,28 @@ function makeC4(box, ctx) {
     if (st.winner || st.draw) { status.textContent = ''; hideGhost(); pGhost.hidden = true; return; }
     if (t === seat) status.textContent = 'Your turn — slide to aim, let go to drop';
     else if (t === opp) {
-      const p = Live.partner();
-      status.textContent = p && typeof p.pres.hover === 'number' ? `${P} is lining up a move…` : `Waiting for ${P}…`;
+      status.textContent = Live.partnerHover() != null ? `${P} is lining up a move…` : `Waiting for ${P}…`;
     } else status.textContent = '';
     paintPartnerGhost();
   }
   function paintPartnerGhost() {
-    const p = Live.partner();
-    const hov = p && p.pres ? p.pres.hover : null;
-    if (st && st.turn === opp && !animating && typeof hov === 'number' && hov >= 0 && hov < C4C) {
+    const hov = Live.partnerHover();
+    if (st && st.turn === opp && !animating && hov != null && hov >= 0 && hov < C4C) {
       pGhost.className = 'disc ghost partner ' + colorOf(opp);
       pGhost.style.left = pad + hov * cell + (cell - cell * 0.82) / 2 + 'px';
       pGhost.hidden = false;
     } else pGhost.hidden = true;
   }
-  function finish() {
+  // quiet: the game was already over when this screen opened, so no end card
+  function finish(quiet) {
     if (endShown) return;
     endShown = true;
     if (st.line) for (const [r, c] of st.line) { const el = discMap.get(r + ',' + c); el && el.classList.add('win'); }
     recordResult(m, st.winner || 'draw');
     endArea.replaceChildren(endBar(m));
+    if (quiet) return;
     const title = st.winner === seat ? 'Four in a row. You win!' : st.winner ? `${P} got four in a row` : 'Board’s full. It’s a draw';
-    setTimeout(() => { if (!dead && G.matchId === m.id) endSheet(m, { title, body: `${st.moves.length} discs dropped.`, good: st.winner === seat }); }, 1100);
+    endSheetSoon(m, () => dead, 1100, { title, body: `${st.moves.length} discs dropped.`, good: st.winner === seat });
   }
   // ---- touch aiming ----
   const colAt = (x) => { const r = board.getBoundingClientRect(); return Math.max(0, Math.min(C4C - 1, Math.floor((x - r.left - pad) / cell))); };
@@ -156,7 +156,7 @@ function makeC4(box, ctx) {
   function hideGhost() { ghost.hidden = true; }
   wrap.addEventListener('pointerdown', (e) => {
     if (!canMove()) {
-      if (st && st.turn === opp && !st.winner) { status.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'translateX(0)' }], { duration: 260 }); }
+      if (st && st.turn === opp && !st.winner) shake(status, 6, 260, 'transform');
       return;
     }
     aiming = true;
@@ -181,7 +181,7 @@ function makeC4(box, ctx) {
   function drop(c) {
     if (!canMove()) { hideGhost(); return; }
     if (st.grid[0][c]) {
-      ghost.animate([{ translate: '0 0' }, { translate: '-6px 0' }, { translate: '6px 0' }, { translate: '0 0' }], { duration: 260 });
+      shake(ghost);
       toast('That column is full');
       setTimeout(hideGhost, 260);
       Live.set({ hover: null });
@@ -190,7 +190,7 @@ function makeC4(box, ctx) {
     pending = true; pendingN = st.moves.length;
     hideGhost();
     Live.set({ hover: null });
-    write(`tables/${G.code}/matches/${m.id}`, { moves: { ['m' + pad3(pendingN)]: c } }).then((ok) => { if (!ok) { pending = false; paintChrome(); } });
+    write(matchPath(m.id), { moves: { ['m' + pad3(pendingN)]: c } }).then((ok) => { if (!ok) { pending = false; paintChrome(); } });
   }
 
   return {
@@ -201,7 +201,7 @@ function makeC4(box, ctx) {
       if (cell == null) layout();
       if (rendered < 0) {
         renderStatic();
-        if (st.winner || st.draw) { endShown = true; if (st.line) for (const [r, c] of st.line) { const el = discMap.get(r + ',' + c); el && el.classList.add('win'); } endArea.replaceChildren(endBar(m)); recordResult(m, st.winner || 'draw'); }
+        if (st.winner || st.draw) finish(true);
       }
       queue();
     },

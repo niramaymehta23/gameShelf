@@ -150,15 +150,8 @@ function makeQFSetup(box) {
     busy = true; draw(); Sound.pick();
     const words = pick.mode !== 'sums', sums = pick.mode !== 'words';
     const qf = { by: G.seat, mode: pick.mode, len: words ? pick.len : null, side: words ? pick.side : null, op: sums ? pick.op : null };
-    const path = matchPath(m.id);
-    try {
-      await Net.timed(FB.fs.runTransaction(async (tx) => {
-        const ref = FB.fs.doc(path), snap = await tx.get(ref), latest = snap.data();
-        if (!snap.exists || rpsState(latest).starter !== G.seat || latest.qf) throw Error('The game has already been set up.');
-        tx.update(ref, { qf });
-      }));
-    } catch (e) { toast(e.message || 'Couldn’t set up the game. Try again.'); }
-    finally { busy = false; if (root.isConnected) draw(); }
+    await chooseOnce(m, 'qf', qf, 'The game has already been set up.', 'Couldn’t set up the game. Try again.');
+    busy = false; if (root.isConnected) draw();
   }
   const opt = (group, value, label, sub) => h('button', {
     class: 'qf-opt' + (pick[group] === value ? ' on' : ''), 'aria-pressed': String(pick[group] === value), 'data-opt': group + ':' + value,
@@ -237,7 +230,6 @@ function makeQF(box, ctx) {
   const elapsed = () => (clock && clock.key === cur ? Date.now() - clock.t : 0);
   const clockKey = (key) => 'qf-t0:' + m.id + ':' + key;
   const say = (text) => { status.replaceChildren(...(Array.isArray(text) ? text : [text])); };
-  const shake = (el) => el.animate([{ translate: '0 0' }, { translate: '-7px 0' }, { translate: '7px 0' }, { translate: '0 0' }], { duration: 260 });
   function note(text, ms = 1600) { flash = text; clearTimeout(flashTimer); flashTimer = setTimeout(() => { flash = ''; paint(); }, ms); paint(); }
   const wordsUp = () => document.activeElement === input;
   function btn(label, kind, fn) {
@@ -315,14 +307,14 @@ function makeQF(box, ctx) {
   input.addEventListener('blur', () => { paint(); });
   function tryWord(r, w) {
     if (r.ans[seat] || sent.has(r.key)) return;
-    if (!qfLegal(w)) { Sound.lose(); vibrate(20); shake(stage); note(`${w} isn’t in our dictionary`, 1800); return; }
+    if (!qfLegal(w)) { Sound.lose(); vibrate(20); shake(stage, 7); note(`${w} isn’t in our dictionary`, 1800); return; }
     Sound.ding(); send(r, { w });
   }
   // ---- the Sums keypad (and a real keyboard's digits) ----
   function press(k) {
     const r = round();
     if (!r || r.type !== 's' || (r.phase === 'pick' && (r.picks[seat] != null || localPick[r.key] != null)) || (r.phase === 'race' && (r.ans[seat] || sent.has(r.key)))) return;
-    if (Date.now() < lockUntil) { shake(pad); return; }
+    if (Date.now() < lockUntil) { shake(pad, 7); return; }
     const max = r.phase === 'pick' ? 3 : 4;
     if (k === 'del') typed = typed.slice(0, -1);
     else if (k === 'ok') return enter(r);
@@ -330,14 +322,14 @@ function makeQF(box, ctx) {
     Sound.tap(); paint();
   }
   function enter(r) {
-    if (!typed) { shake(pad); return; }
+    if (!typed) { shake(pad, 7); return; }
     const n = +typed, op = QF_OPS[st.setup.op];
     if (r.phase === 'pick') {
-      if (n < op.lo || n > op.hi) { shake(pad); note(`Pick from ${op.lo} to ${op.hi}`); typed = ''; paint(); return; }
+      if (n < op.lo || n > op.hi) { shake(pad, 7); note(`Pick from ${op.lo} to ${op.hi}`); typed = ''; paint(); return; }
       pickIt(r, n); return;
     }
     if (n === r.answer) { Sound.ding(); send(r, { n }); return; }
-    Sound.lose(); vibrate(20); shake(stage); lockUntil = Date.now() + QF_WRONG_MS;
+    Sound.lose(); vibrate(20); shake(stage, 7); lockUntil = Date.now() + QF_WRONG_MS;
     note(`Not ${n}`, QF_WRONG_MS); typed = ''; paint();
   }
   const onKey = (e) => {
@@ -468,7 +460,7 @@ function makeQF(box, ctx) {
     endArea.replaceChildren(endBar(m));
     const a = st.score[seat], b = st.score[opp], won = st.winner === seat;
     say(won ? 'You win!' : `${P} wins`);
-    setTimeout(() => { if (!dead && G.matchId === m.id) endSheet(m, { title: won ? `You win, ${a}–${b}!` : `${P} wins, ${b}–${a}`, body: `${st.rounds.filter((r) => r.phase === 'done').length} rounds of ${QF_MODES[st.setup.mode].name}.`, good: won }); }, 900);
+    endSheetSoon(m, () => dead, 900, { title: won ? `You win, ${a}–${b}!` : `${P} wins, ${b}–${a}`, body: `${st.rounds.filter((r) => r.phase === 'done').length} rounds of ${QF_MODES[st.setup.mode].name}.`, good: won });
   }
 
   async function step() {

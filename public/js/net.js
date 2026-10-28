@@ -173,6 +173,11 @@ const Live = {
     if (!list.length) return null;
     return list.sort((a, b) => (b.at || 0) - (a.at || 0))[0];
   },
+  // the column (Connect Four) or card (Hues) the partner's finger is on, or null
+  partnerHover() {
+    const p = this.partner(), v = p && p.pres ? p.pres.hover : null;
+    return typeof v === 'number' ? v : null;
+  },
   seatOnline(seat) { return this.peers.some((p) => p.pres && p.pres.seat === seat); },
 };
 

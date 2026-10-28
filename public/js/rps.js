@@ -109,7 +109,7 @@ function makeRPS(box, ctx) {
     pending = true; localPick = c;
     Sound.pick(); vibrate(10);
     renderChoosing(st);
-    write(`tables/${G.code}/matches/${m.id}`, { rps: { ['r' + st.k]: { [seat]: c } } }).then((ok) => {
+    write(matchPath(m.id), { rps: { ['r' + st.k]: { [seat]: c } } }).then((ok) => {
       pending = false;
       if (!ok) { localPick = null; if (!dead) renderChoosing(rpsState(m)); }
     });
@@ -154,7 +154,7 @@ function makeRPS(box, ctx) {
       v1.textContent = 'Tie! Go again';
       v2.textContent = `You both picked ${myC}`;
       [topCard, botCard].forEach((c) => c.classList.add('shake'));
-      [topCard, botCard].forEach((c) => c.animate([{ translate: '0 0' }, { translate: '-6px 0' }, { translate: '6px 0' }, { translate: '0 0' }], { duration: 300 }));
+      [topCard, botCard].forEach((c) => shake(c, 6, 300));
     }
     verdict.replaceChildren(v1, v2);
     verdict.classList.remove('show'); void verdict.offsetWidth; verdict.classList.add('show');
@@ -169,21 +169,16 @@ function makeRPS(box, ctx) {
   }
   function showStarter(starter) {
     const meFirst = starter === seat;
-    const game = m.game;
-    const line = game === 'c4'
-      ? (meFirst ? 'You’re red, and red drops first.' : `You’re yellow. ${P} is red and drops first.`)
-      : game === 'hu' ? (meFirst ? 'Seven cards each, and you play the first one.' : `Seven cards each, and ${P} plays the first one.`)
-      : game === 'qf' ? (meFirst ? 'You set up the race: Words, Sums or both.' : `${P} sets up the race: Words, Sums or both.`)
-      : (meFirst ? 'Hide your fleet, then you fire the first shot.' : `Hide your fleet, then ${P} fires the first shot.`);
+    const game = m.game, info = GAMES[game].starter;
     let done = false;
     const finish = () => { if (done || dead) return; done = true; Sound.tap(); ctx.onIntroDone(); };
     const card = h('div', { class: 'starter-card' },
       h('div', { class: 'paper' },
         h('div', { class: 'tape', style: 'top:-12px;left:50%;margin-left:-44px;transform:rotate(-3deg)' }),
-        game === 'c4' ? h('div', { class: 'disc-demo disc ' + (meFirst ? 'red' : 'yellow') }) : h('img', { class: 'wc', src: game === 'hu' ? 'art/box-hu.png' : game === 'qf' ? 'art/box-qf.png' : 'art/box-bs.png', alt: '', style: 'width:64px;height:auto;border-radius:4px' }),
+        game === 'c4' ? h('div', { class: 'disc-demo disc ' + (meFirst ? 'red' : 'yellow') }) : h('img', { class: 'wc', src: GAMES[game].art, alt: '', style: 'width:64px;height:auto;border-radius:4px' }),
         h('div', { class: 'display h2', style: 'color:var(--ink)' }, meFirst ? 'You go first!' : `${P} goes first`),
-        h('div', { class: 'line' }, line),
-        h('button', { class: 'btn btn-felt', onclick: finish }, game === 'c4' ? 'To the board' : game === 'hu' ? 'Deal the cards' : game === 'qf' ? 'On your marks' : 'Place my ships'),
+        h('div', { class: 'line' }, info.line(meFirst, P)),
+        h('button', { class: 'btn btn-felt', onclick: finish }, info.go),
       ));
     choices.style.opacity = '0'; hint.textContent = '';
     root.append(card);

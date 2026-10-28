@@ -371,15 +371,8 @@ function makeHueRules(box) {
   async function choose(rules) {
     if (busy || rpsState(m).starter !== G.seat) return;
     busy = true; draw();
-    const path = matchPath(m.id);
-    try {
-      await Net.timed(FB.fs.runTransaction(async (tx) => {
-        const ref = FB.fs.doc(path), snap = await tx.get(ref), latest = snap.data();
-        if (!snap.exists || rpsState(latest).starter !== G.seat || latest.hueRules) throw Error('The rules have already been chosen.');
-        tx.update(ref, { hueRules: rules });
-      }));
-    } catch (e) { toast(e.message || 'Couldn’t choose the rules. Try again.'); }
-    finally { busy = false; if (root.isConnected) draw(); }
+    await chooseOnce(m, 'hueRules', rules, 'The rules have already been chosen.', 'Couldn’t choose the rules. Try again.');
+    busy = false; if (root.isConnected) draw();
   }
   const rows = [
     ['Cards per play', 'Same-number cards together', 'One card'],
@@ -438,7 +431,6 @@ function makeHU(box, ctx) {
   const canAct = () => !!(st && st.turn === seat && !st.winner && !pending && !animating && !choosing);
   const canSayHues = s => hueCanSay(s, seat);
   const canCallOut = s => s?.version === 2 ? hueCanCall(s, seat, Net.now()) : !!(s && s.owes[opp] && s.hands[opp].length === 1 && s.turn !== opp);
-  const shake = (el) => el.animate([{ translate: '0 0' }, { translate: '-6px 0' }, { translate: '6px 0' }, { translate: '0 0' }], { duration: 260 });
   const sortKey = (id) => { const c = HUE_DECK[id]; return (c.c < 0 ? 4 : c.c) * 1000 + ['n', 'again', 'p2', 'blend', 'p4', 'trade'].indexOf(c.k) * 20 + (c.v || 0); };
   const tilt = (id) => ((id * 37) % 11) - 5;
 
@@ -523,9 +515,8 @@ function makeHU(box, ctx) {
       else if (s.grace) say(`${P} is out of cards. `, ['Last turn'], ' to stop them');
       else say('Your turn. Play on ', [HUE_NAMES[s.colour]], top.k === 'n' ? ` or a ${top.v}` : '');
     } else if (s.turn === opp) {
-      const p = Live.partner();
       if (s.penalty) say(s.rules === 'official' ? `${P} picks up ${s.penalty} and skips their turn` : `${P} has to stack or pick up ${s.penalty}`);
-      else say(p && p.pres && typeof p.pres.hover === 'number' ? `${P} is choosing a card…` : `Waiting for ${P}…`);
+      else say(Live.partnerHover() != null ? `${P} is choosing a card…` : `Waiting for ${P}…`);
     }
   }
 
@@ -610,15 +601,17 @@ function makeHU(box, ctx) {
     paint(st);
     if (st.winner) finish();
   }
-  function finish() {
+  // quiet: the game was already over when this screen opened, so no end card
+  function finish(quiet) {
     if (endShown) return;
     endShown = true;
     recordResult(m, st.winner);
     endArea.hidden = false;
     endArea.replaceChildren(endBar(m));
+    if (quiet) return;
     const n = st.log.reduce((t, e) => t + (e.k === 'play' ? e.ids.length : 0), 0);
     const title = st.winner === seat ? 'Out of cards. You win!' : `${P} played their last card`;
-    setTimeout(() => { if (!dead && G.matchId === m.id) endSheet(m, { title, body: `${n} cards played, ${st.hands[st.winner === seat ? opp : seat].length} left in the losing hand.`, good: st.winner === seat }); }, 900);
+    endSheetSoon(m, () => dead, 900, { title, body: `${n} cards played, ${st.hands[st.winner === seat ? opp : seat].length} left in the losing hand.`, good: st.winner === seat });
   }
 
   // ---- moves ----
@@ -787,7 +780,7 @@ function makeHU(box, ctx) {
         rendered = st.log.length;
         requestAnimationFrame(() => { if (!dead) paint(huState(m, rendered)); });
         paint(st);
-        if (st.winner) { endShown = true; recordResult(m, st.winner); endArea.hidden = false; endArea.replaceChildren(endBar(m)); }
+        if (st.winner) finish(true);
       }
       st = huState(m);
       if (m.hueVersion !== 2 && pending && Object.keys(m.plays || {}).length > pendingN) pending = false;
