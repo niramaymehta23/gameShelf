@@ -1,15 +1,7 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import vm from 'node:vm';
+import { load } from './load.mjs';
 // The Quickfire replay (public/js/quickfire.js) with the real dictionary, outside the browser.
-const ctx = vm.createContext({
-  clone: (x) => JSON.parse(JSON.stringify(x)), sortedKeys: (o) => Object.keys(o || {}).sort(),
-  other: (s) => (s === 'host' ? 'guest' : 'host'), pad3: (n) => String(n).padStart(3, '0'),
-  rpsState: (m) => ({ starter: m.starter || 'host' }),
-});
-for (const f of ['hues.js', 'words.js', 'quickfire.js']) vm.runInContext(fs.readFileSync('public/js/' + f, 'utf8'), ctx);
-vm.runInContext('globalThis.Q={qfState,qfSetup,qfLegal,qfFits,qfRoundType}', ctx);
-const Q = ctx.Q;
+const Q = load(['hues.js', 'words.js', 'quickfire.js'], ['qfState', 'qfSetup', 'qfLegal', 'qfFits', 'qfRoundType'], { rpsState: (m) => ({ starter: m.starter || 'host' }) });
 let n = 0;
 const test = (title, fn) => { fn(); console.log('  ok ' + title); n++; };
 const match = (qf, extra = {}) => ({ id: 't', seed: 'seed', starter: 'host', qf: { by: 'host', ...qf }, picks: {}, ans: {}, ...extra });

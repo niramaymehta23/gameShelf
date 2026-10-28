@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import vm from 'node:vm';
-const ctx=vm.createContext({clone:x=>JSON.parse(JSON.stringify(x)),sortedKeys:o=>Object.keys(o||{}).sort(),other:s=>s==='host'?'guest':'host',rpsState:()=>({starter:'host'})});
-vm.runInContext(fs.readFileSync('public/js/hues.js','utf8')+'\nglobalThis.E={hueInitial,hueApply,huState,hueCanSay,hueCanCall,hueNeedsNotice,hueFits,hueFitsAll,deck:HUE_DECK};',ctx);
-const E=ctx.E,D=E.deck;let n=0,seq=0;
+import { load } from './load.mjs';
+const E = load(['hues.js'], ['hueInitial', 'hueApply', 'huState', 'hueCanSay', 'hueCanCall', 'hueNeedsNotice', 'hueFits', 'hueFitsAll', 'HUE_DECK'], { rpsState: () => ({ starter: 'host' }) });
+const D = E.HUE_DECK;
+let n=0,seq=0;
 const test=(title,fn)=>{fn();console.log('  ok '+title);n++;};
 const ids=(kind,colour)=>D.filter(c=>c.k===kind&&(colour===undefined||c.c===colour)).map(c=>c.id);
 const num=(colour,value,copy=0)=>D.filter(c=>c.k==='n'&&c.c===colour&&c.v===value)[copy].id;

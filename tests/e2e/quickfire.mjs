@@ -2,24 +2,11 @@
 // kept up between rounds, fair timing when one phone sees the puzzle late, a refused word, giving
 // up, letters no word fits, a whole game to 5, then Sums with the keypad and a wrong answer.
 //   run by npm run test:e2e (or: node tests/e2e/quickfire.mjs with npm start running)
-import { createRequire } from 'node:module';
-import fs from 'node:fs';
 import assert from 'node:assert/strict';
-const { chromium } = createRequire(import.meta.url)('playwright');
-fs.mkdirSync('tests/e2e/screens', { recursive: true });
-const URL = process.env.E2E_URL || 'http://localhost:3000';
-const browser = await chromium.launch({ headless: !process.env.HEADED, channel: process.env.E2E_CHANNEL || 'chromium', executablePath: process.env.E2E_EXECUTABLE_PATH || undefined });
-const phone = { viewport: { width: 390, height: 844 }, hasTouch: true, deviceScaleFactor: 2 };
-const ca = await browser.newContext(phone), cb = await browser.newContext(phone);
-const a = await ca.newPage(), b = await cb.newPage(), errors = [];
-for (const [n, p] of [['A', a], ['B', b]]) {
-  p.on('pageerror', (e) => errors.push(`${n}: ${e.message}`));
-  p.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)|net::|requestStorageAccess/.test(m.text())) errors.push(`${n}: ${m.text()}`); });
-}
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const snap = async (p, name) => { await p.waitForTimeout(350); await p.screenshot({ path: `tests/e2e/screens/${name}.png` }); };
+import { twoPhones, URL, sleep, snap as shot, until, setUpTable, rpsRound } from './lib.mjs';
+const { browser, a, b, errors } = await twoPhones();
+const snap = (p, name) => shot(p, name, 350);
 const ok = (msg) => console.log('  ok ' + msg);
-const until = (p, fn, arg, timeout = 15000) => p.waitForFunction(fn, arg, { timeout });
 const qs = (p) => p.evaluate(() => { const s = qfState(G.match); return { score: s.score, winner: s.winner, cur: s.cur && { key: s.cur.key, phase: s.cur.phase, type: s.cur.type }, rounds: s.rounds.map((r) => ({ key: r.key, phase: r.phase, w: r.w, why: r.why })) }; });
 const inputFocused = (p) => p.evaluate(() => document.activeElement === document.querySelector('.qf-input'));
 const roundKey = async (p) => (await qs(p)).cur.key;
@@ -28,29 +15,17 @@ const phase = (key, ph) => Promise.all([a, b].map((p) => until(p, ([k, f]) => { 
 const nextRound = async (after) => { await Promise.all([a, b].map((p) => until(p, (k) => { const s = qfState(G.match); return s.cur && s.cur.key > k && s.cur.phase === 'pick' && document.querySelector('.qf-result')?.hidden; }, after))); return roundKey(a); };
 const setHidden = (p, hidden) => p.evaluate((x) => { Object.defineProperty(document, 'visibilityState', { value: x ? 'hidden' : 'visible', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); }, hidden);
 async function letter(p, ch) { await p.keyboard.type(ch); await p.keyboard.press('Enter'); }
-async function rps(pa, pb) {
-  const n = await a.evaluate(() => rpsState(G.match).rounds.length);
-  await a.locator('.choices:not(.locked)').waitFor(); await b.locator('.choices:not(.locked)').waitFor();
-  await a.locator('.choices .hand', { hasText: pa }).click(); await sleep(200);
-  await b.locator('.choices .hand', { hasText: pb }).click();
-  await Promise.all([a, b].map((p) => until(p, (k) => rpsState(G.match).rounds.length > k, n)));
-  await sleep(3600);
-}
 async function openQuickfire(first) {
   if (first) { await a.locator('.gbox.qf').click(); await a.locator('#sheet').getByRole('button', { name: 'Play Quickfire' }).click(); }
   await b.locator('#sheet').getByRole('button', { name: 'Join' }).click();
   for (const p of [a, b]) { await p.locator('.howto-card').waitFor(); await p.locator('.howto-card').getByRole('button', { name: 'Got it' }).click(); }
-  await rps('Rock', 'Scissors'); await rps('Paper', 'Rock');
+  await rpsRound(a, b, 'Rock', 'Scissors'); await rpsRound(a, b, 'Paper', 'Rock');
   await Promise.all([a, b].map((p) => p.locator('.qf-setup').waitFor({ timeout: 10000 })));
 }
 
 try {
   await Promise.all([a, b].map((p) => p.goto(URL)));
-  await a.fill('#nameInput', 'Niramay'); await a.getByRole('button', { name: 'Set up a table', exact: true }).click();
-  await a.locator('.code-card .tile').first().waitFor();
-  const code = await a.evaluate(() => G.code);
-  await b.fill('#nameInput', 'Saharsh'); await b.getByRole('button', { name: 'Join with a code', exact: true }).click(); await b.fill('#codeInput', code);
-  await a.locator('.gbox.qf').waitFor(); await b.locator('.gbox.qf').waitFor();
+  await setUpTable(a, b);
   assert.equal(await a.locator('.cubby .gbox').count(), 4);
   await snap(a, 'qf-01-shelf');
   ok('Quickfire is the fourth game on the shelf');

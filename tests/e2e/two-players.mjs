@@ -9,38 +9,14 @@
 // Screenshots land in tests/e2e/screens/ (git-ignored).
 // First run on a new machine: npx playwright install chromium
 
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
-import fs from 'node:fs';
+import { twoPhones, PHONE, URL, sleep, snap, state, until, rpsRound, rpsSettled } from './lib.mjs';
 
-// require() (unlike import) also finds a globally installed Playwright
-const { chromium } = createRequire(import.meta.url)('playwright');
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const SHOTS = path.join(ROOT, 'tests/e2e/screens');
-fs.mkdirSync(SHOTS, { recursive: true });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let failures = 0;
 function check(cond, label) { console.log(`${cond ? '  ok ' : '  FAIL'}  ${label}`); if (!cond) failures++; }
 
-function startServer() {
-  return { url: process.env.E2E_URL || 'http://localhost:3000', stop() {} };
-}
-
 const gotIt = (p) => p.locator('.howto-card').getByRole('button', { name: 'Got it' }).click();
-const snap = (p, name) => p.screenshot({ path: path.join(SHOTS, name + '.png') });
-const state = (p, expr) => p.evaluate(expr);
-
-async function rpsRound(a, b, pa, pb) {
-  const round = await state(a, 'rpsState(G.match).rounds.length');
-  await a.locator('.choices:not(.locked)').waitFor();
-  await b.locator('.choices:not(.locked)').waitFor();
-  await a.locator('.choices .hand', { hasText: pa }).click();
-  await sleep(250);
-  await b.locator('.choices .hand', { hasText: pb }).click();
-  await Promise.all([a, b].map(p => p.waitForFunction(n => rpsState(G.match).rounds.length > n, round)));
-  await sleep(3700); // reveal animation + verdict
-}
+// the end-of-game card is up on this phone
+const endCard = (p, text) => p.locator('#sheet .panel', { hasText: text }).waitFor({ timeout: 10000 });
 
 async function waitTurn(p, timeout = 15000) {
   await p.waitForFunction(() => {
@@ -64,7 +40,8 @@ async function shoot(p, r, c) {
   await p.waitForFunction(() => /Tap a square/.test(document.querySelector('.bs-status')?.textContent || ''), null, { timeout: 20000 });
   const n = await p.evaluate(() => bsState(G.match).shots.length);
   await p.locator('.seg button').first().click();
-  await sleep(550);
+  // wait for the charts to finish sliding over to their waters
+  await until(p, () => !document.getAnimations().some((x) => x.transitionProperty === 'transform' && x.effect?.target?.contains(document.querySelector('.bs-grid.target'))));
   const g = await p.locator('.bs-grid.target').boundingBox();
   const cw = g.width / 10;
   const x = g.x + cw * (c + 0.5), y = g.y + cw * (r + 0.5);
@@ -79,23 +56,12 @@ function shipCells(fleet) {
   return out;
 }
 
-const server = await startServer();
-// Use Chromium's full browser/new headless implementation. On macOS the separate
-// headless shell can crash natively after the long multi-game session.
-const browser = await chromium.launch({ headless: !process.env.HEADED, channel: process.env.E2E_CHANNEL || 'chromium', executablePath: process.env.E2E_EXECUTABLE_PATH || undefined });
-const phone = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true };
-const ctxA = await browser.newContext(phone), ctxB = await browser.newContext(phone);
-const a = await ctxA.newPage(), b = await ctxB.newPage();
-const errors = [];
-for (const [n, p] of [['A', a], ['B', b]]) {
-  p.on('pageerror', (e) => errors.push(`${n}: ${e.message}`));
-  p.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)|ERR_TUNNEL|ERR_NAME|net::|requestStorageAccess/.test(m.text())) errors.push(`${n}: ${m.text()}`); });
-}
+const { browser, a, b, errors } = await twoPhones();
 
 try {
-  console.log(`\nServer: ${server.url}`);
+  console.log(`\nServer: ${URL}`);
   console.log('Lobby');
-  await a.goto(server.url); await b.goto(server.url);
+  await a.goto(URL); await b.goto(URL);
   await a.fill('#nameInput', 'Niramay');
   await a.getByRole('button', { name: 'Set up a table' }).click();
   await a.locator('.code-card .rack .tile').first().waitFor();
@@ -130,10 +96,11 @@ try {
   await sleep(500);
   check((await b.locator('.slot.top .hand').getAttribute('aria-label')) === 'Chosen', 'partner sees "chosen" but not the pick');
   await b.locator('.choices .hand', { hasText: 'Rock' }).click();
-  await sleep(3700);
+  await Promise.all([a, b].map((p) => until(p, () => rpsState(G.match).rounds.length > 0)));
+  await Promise.all([a, b].map(rpsSettled));
   await rpsRound(a, b, 'Rock', 'Scissors');
   await rpsRound(a, b, 'Paper', 'Rock');
-  await snap(a, '03-starter');
+  await snap(a, '03-starter', 600);
   await a.locator('.c4-board').waitFor({ timeout: 12000 }); await b.locator('.c4-board').waitFor({ timeout: 12000 });
   check(await state(a, 'c4State(G.match).starter === G.seat'), 'RPS winner drops first');
   const seq = [[a, 3], [b, 3], [a, 2], [b, 4], [a, 1], [b, 4], [a, 0]];
@@ -148,8 +115,8 @@ try {
       check(true, 'B reconnected after its connection dropped');
     }
   }
-  await sleep(2200);
-  await snap(a, '04-c4-end');
+  await Promise.all([endCard(a, 'You win'), endCard(b, 'four in a row')]);
+  await snap(a, '04-c4-end', 450);
   check((await a.locator('#sheet').innerText()).includes('You win'), 'winner sees the win card');
   check((await b.locator('#sheet').innerText()).includes('Niramay got four in a row'), 'loser sees who won');
   check(await state(b, 'c4State(G.match).moves.length') === 7, 'both boards agree on 7 discs');
@@ -207,8 +174,8 @@ try {
     await shoot(b, ...aShips[k]);
     if (k === 2) { await sleep(1200); await snap(b, '06-battle'); await snap(a, '06-battle-other-side'); }
   }
-  await sleep(3500);
-  await snap(b, '07-bs-end');
+  await Promise.all([endCard(b, 'whole fleet'), endCard(a, 'whole fleet')]);
+  await snap(b, '07-bs-end', 450);
   check((await b.locator('#sheet').innerText()).includes('whole fleet'), 'winner sees the victory card');
   check((await a.locator('#sheet').innerText()).includes('sank your whole fleet'), 'loser sees the defeat card');
   const hits = await state(a, 'bsState(G.match).hits');
@@ -353,13 +320,14 @@ try {
     await huMove(p);
     if (huMoves === 12) { await sleep(700); await snap(a, '16-hu-mid'); await snap(b, '16-hu-mid-other'); }
   }
-  await sleep(2600);
+  await Promise.all([a, b].map((p) => until(p, () => !!huState(G.match).winner)));
   const huWinner = await state(a, 'huState(G.match).winner');
   check(!!huWinner && huWinner === await state(b, 'huState(G.match).winner'), `a winner both phones agree on, after ${huMoves} moves`);
   console.log(`       (${hues} Hues called, ${callouts} called out, pairs played: ${multi})`);
   check(await state(a, 'huState(G.match).log.every((e) => e.k !== "callout" || e.ids.length === 2)'), 'every call-out cost two cards');
   const [huW, huL] = huWinner === await state(a, 'G.seat') ? [a, b] : [b, a];
-  await snap(huW, '17-hu-end');
+  await Promise.all([endCard(huW, 'You win'), endCard(huL, 'played their last card')]);
+  await snap(huW, '17-hu-end', 450);
   check((await huW.locator('#sheet').innerText()).includes('You win'), 'winner sees the win card');
   check((await huL.locator('#sheet').innerText()).includes('played their last card'), 'loser sees who went out');
   await sheetBtn(a, 'Back to the shelf');
@@ -398,8 +366,8 @@ try {
   await a.locator('#bar').waitFor({ state: 'visible', timeout: 8000 });
   check(true, 'reload returns to the same table');
   // invite link pre-fills the code on a fresh phone
-  const ctxC = await browser.newContext(phone); const c = await ctxC.newPage();
-  await c.goto(`${server.url}/?join=${code}`);
+  const ctxC = await browser.newContext(PHONE); const c = await ctxC.newPage();
+  await c.goto(`${URL}/?join=${code}`);
   await c.locator('#codeInput').waitFor();
   check((await c.locator('#codeInput').inputValue()) === code, 'invite link fills in the code');
   await ctxC.close();
@@ -415,7 +383,6 @@ try {
   if (errors.length) { console.log('\nBrowser errors:'); for (const e of errors) console.log('  ' + e); }
   failures += errors.length;
   await browser.close();
-  server.stop();
   console.log(failures ? `\n${failures} problem(s)` : '\nAll good');
   process.exit(failures ? 1 : 0);
 }
