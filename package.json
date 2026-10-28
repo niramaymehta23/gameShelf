@@ -10,7 +10,7 @@
     "start": "node tools/firebase-config.mjs --stub && firebase emulators:start --project demo-gameshelf",
     "check": "for f in public/js/*.js; do node --check \"$f\" || exit 1; done",
     "test": "npm run test:rules && npm run test:e2e",
-    "test:e2e": "node tools/firebase-config.mjs --stub && firebase emulators:exec --project demo-gameshelf \"node tests/e2e/two-players.mjs && node tests/e2e/hues-bugs.mjs && node tests/e2e/quickfire.mjs\"",
+    "test:e2e": "node tools/firebase-config.mjs --stub && firebase emulators:exec --project demo-gameshelf \"node tests/e2e/two-players.mjs && node tests/e2e/hues-bugs.mjs && node tests/e2e/quickfire.mjs && node tests/e2e/wake-lock.mjs\"",
     "deploy": "firebase deploy --only hosting,firestore:rules,database",
     "test:rules": "node tests/unit/replay.mjs && node tests/unit/hues.mjs && node tests/unit/quickfire.mjs && node tests/unit/table-history.mjs"
   },

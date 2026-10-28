@@ -459,9 +459,26 @@ $('#chatBtn').insertAdjacentHTML('afterbegin', ICON.chat);
 $('#chatBtn').addEventListener('click', openChat);
 
 // ---------- wake lock while a game is on screen ----------
+// The browser drops the lock whenever the page is hidden (phone locked, app switched), so it's
+// asked for again on the way back while a game is still open.
 const Wake = {
-  lock: null,
-  async on() { try { if ('wakeLock' in navigator && !this.lock) { this.lock = await navigator.wakeLock.request('screen'); this.lock.addEventListener('release', () => { this.lock = null; }); } } catch (e) { this.lock = null; } },
-  off() { try { this.lock && this.lock.release(); } catch (e) {} this.lock = null; },
+  lock: null, wanted: false,
+  async on() {
+    this.wanted = true;
+    if (!('wakeLock' in navigator) || this.lock || document.visibilityState !== 'visible') return;
+    try {
+      const lock = await navigator.wakeLock.request('screen');
+      // the game was left while the lock was being granted, or another request got there first
+      if (!this.wanted || this.lock) { lock.release().catch(() => {}); return; }
+      this.lock = lock;
+      lock.addEventListener('release', () => { if (this.lock === lock) this.lock = null; });
+    } catch (e) {}
+  },
+  off() {
+    this.wanted = false;
+    if (this.lock) this.lock.release().catch(() => {});
+    this.lock = null;
+  },
 };
+document.addEventListener('visibilitychange', () => { if (Wake.wanted && document.visibilityState === 'visible') Wake.on(); });
 
