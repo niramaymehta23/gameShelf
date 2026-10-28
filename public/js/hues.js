@@ -635,7 +635,7 @@ function makeHU(box, ctx) {
         hueApply(huState(latest), command, key);
         tx.update(ref, { ['plays.' + key]: { ...command, at: ['hues', 'notice'].includes(mv.k) ? command.at : firebase.firestore.FieldValue.serverTimestamp() } });
       }));
-    } catch (e) { if (mv.k !== 'notice' && !dead) toast(e.message || 'Couldn’t save that move. Try again.'); }
+    } catch (e) { if (mv.k !== 'notice' && !dead) toast(writeError(e, 'Couldn’t save that move. Try again.')); }
     finally { if (!dead && m?.id === id) { pending = false; paintChrome(); } }
   }
   function tick() {
