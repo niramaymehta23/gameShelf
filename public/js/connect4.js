@@ -87,7 +87,7 @@ function makeC4(box, ctx) {
     discs.append(el);
     const dist = pad + mv.row * cell + cell;
     const dur = 300 + mv.row * 55;
-    setTimeout(() => { Sound.clack(); vibrate(8); }, dur * 0.72);
+    setTimeout(() => { if (!dead) { Sound.clack(); vibrate(8); } }, dur * 0.72);
     await settle(el.animate([
       { transform: `translateY(${-dist}px)`, easing: 'cubic-bezier(.55,0,1,.6)' },
       { transform: 'translateY(0)', offset: 0.72, easing: 'cubic-bezier(0,.5,.5,1)' },
