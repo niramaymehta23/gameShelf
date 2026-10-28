@@ -1,5 +1,5 @@
 // End-to-end: two players on two "phones" (separate browser contexts) play a full game of
-// Connect Four, Battleships, Hues and IPOs against the Firebase emulators, then check that a
+// Connect Four, Battleships and Hues against the Firebase emulators, then check that a
 // dropped connection and a page reload both recover.
 //
 //   npm run test:e2e                      starts the emulators, runs this, stops them
@@ -32,9 +32,13 @@ const snap = (p, name) => p.screenshot({ path: path.join(SHOTS, name + '.png') }
 const state = (p, expr) => p.evaluate(expr);
 
 async function rpsRound(a, b, pa, pb) {
+  const round = await state(a, 'rpsState(G.match).rounds.length');
+  await a.locator('.choices:not(.locked)').waitFor();
+  await b.locator('.choices:not(.locked)').waitFor();
   await a.locator('.choices .hand', { hasText: pa }).click();
   await sleep(250);
   await b.locator('.choices .hand', { hasText: pb }).click();
+  await Promise.all([a, b].map(p => p.waitForFunction(n => rpsState(G.match).rounds.length > n, round)));
   await sleep(3700); // reveal animation + verdict
 }
 
@@ -76,7 +80,9 @@ function shipCells(fleet) {
 }
 
 const server = await startServer();
-const browser = await chromium.launch({ headless: !process.env.HEADED });
+// Use Chromium's full browser/new headless implementation. On macOS the separate
+// headless shell can crash natively after the long multi-game session.
+const browser = await chromium.launch({ headless: !process.env.HEADED, channel: process.env.E2E_CHANNEL || 'chromium', executablePath: process.env.E2E_EXECUTABLE_PATH || undefined });
 const phone = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true };
 const ctxA = await browser.newContext(phone), ctxB = await browser.newContext(phone);
 const a = await ctxA.newPage(), b = await ctxB.newPage();
@@ -263,6 +269,10 @@ try {
   await sleep(500);
   await rpsRound(a, b, 'Rock', 'Scissors');
   await rpsRound(a, b, 'Rock', 'Scissors');
+  await a.locator('.hu-rules-card').waitFor();
+  check(await b.locator('[data-rules=custom]').isDisabled(), 'only the RPS winner chooses Hues rules');
+  await snap(a, '13-hu-rules-choice');
+  await a.locator('[data-rules=custom]').click();
   await a.locator('.hu-hand .hcard').first().waitFor({ timeout: 12000 }); await b.locator('.hu-hand .hcard').first().waitFor({ timeout: 12000 });
   await sleep(600);
   check(await state(a, 'huState(G.match).turn === G.seat'), 'RPS winner plays the first card');
@@ -276,6 +286,7 @@ try {
   const logLen = (p) => state(p, 'huState(G.match).log.length');
   const waitLog = (p, n) => p.waitForFunction((n) => huState(G.match).log.length > n, n, { timeout: 10000 });
   async function huMove(p) {
+    const wasDragged = dragged;
     const plan = await p.evaluate(() => {
       const s = huState(G.match), hand = s.hands[G.seat];
       if (s.owes[other(G.seat)] && s.hands[other(G.seat)].length === 1) return { callout: true };
@@ -292,7 +303,7 @@ try {
       const before = await state(victim, 'huState(G.match).hands[G.seat].length');
       await p.locator('.hu-btns .hu-call', { hasText: 'Call out' }).click();
       await waitLog(p, n);
-      await sleep(900);
+      await victim.waitForFunction((before) => huState(G.match).hands[G.seat].length === before + 2, before, { timeout: 10000 });
       callouts++;
       if (callouts === 1) { await snap(victim, '16-hu-called-out'); check(await state(victim, 'huState(G.match).hands[G.seat].length') === before + 2, 'Call out: caught on one card without Hues, picks up 2'); }
       return;
@@ -316,12 +327,13 @@ try {
         await p.locator(`.hu-hand .hcard.sel[data-id="${plan.ids[0]}"]`).click({ position: { x: 12, y: 18 } });
       }
       if (plan.wild) {
-        await p.locator('#sheet .hue-pot').first().waitFor();
+        await p.locator('.hu-colour-picker .hue-pot').first().waitFor();
         if (!pickedColour) { pickedColour = true; await snap(p, '15-hu-colour'); }
-        await p.locator('#sheet .hue-pot').nth(huMoves % 4).click();
+        await p.locator('.hu-colour-picker .hue-pot').nth(huMoves % 4).click();
       }
     }
     await waitLog(p, n);
+    if (!wasDragged && dragged) check(await p.evaluate(n => huState(G.match).log.slice(n).some(e => e.k === 'play'), n), 'dragged a card onto the pile');
     huMoves++;
     const last = await state(p, 'huState(G.match).log.at(-1)');
     if (last.k === 'play' && last.ids.length > 1 && !multi) { multi = true; check(true, `played ${last.ids.length} cards of the same number together`); }
@@ -339,7 +351,6 @@ try {
     const p = (await huReady(a)) ? a : (await huReady(b)) ? b : null;
     if (!p) { await sleep(80); continue; }
     await huMove(p);
-    if (huMoves === 1) check(dragged && await state(a, 'huState(G.match).log[0].k === "play"'), 'dragged a card onto the pile');
     if (huMoves === 12) { await sleep(700); await snap(a, '16-hu-mid'); await snap(b, '16-hu-mid-other'); }
   }
   await sleep(2600);
@@ -357,105 +368,8 @@ try {
   check(/Hues [01] [01]/.test((await a.locator('.score-grid').innerText()).replace(/\s+/g, ' ')), 'score sheet has a Hues row with the win');
   check(!(await a.locator('.gbox.gw').count()), 'Guess Who? is off the shelf');
 
-  console.log('IPOs');
-  await a.locator('.gbox.ip').click(); await sheetBtn(a, 'Play IPOs');
-  await sheetBtn(b, 'Join');
-  await a.locator('.howto-card').waitFor();
-  check((await a.locator('.howto-card').innerText()).includes('Roadshow'), 'IPOs how-to card');
-  await snap(a, '18-ip-howto');
-  await gotIt(a); await gotIt(b);
-  await a.locator('.choices').waitFor(); await b.locator('.choices').waitFor();
-  await sleep(500);
-  await rpsRound(a, b, 'Paper', 'Rock');
-  await rpsRound(a, b, 'Paper', 'Rock');
-  await a.locator('.ip-board').waitFor({ timeout: 12000 }); await b.locator('.ip-board').waitFor({ timeout: 12000 });
-  await sleep(600);
-  check(await state(a, 'ipoState(G.match).starter === G.seat'), 'RPS winner leads the first quarter');
-  const listings = (p) => state(p, 'JSON.stringify(ipoState(G.match).listings)');
-  check(await listings(a) === await listings(b), 'both phones list the same companies from the seed');
-  await snap(a, '19-ip-roadshow');
-  // play like a person: bid on half the listings, play news where it helps, cash out what's frothy (and once anyway)
-  const ipLog = (p) => state(p, 'ipoState(G.match).log.length');
-  const closeSheets = async (p) => { if (await p.locator('#sheet:not([hidden]) .btn').count()) { await p.locator('#sheet .btn').last().click(); await sleep(300); } };
-  let ipMoves = 0, bidRounds = 0, cashed = false, shotMid = false;
-  const kinds = new Set();
-  async function ipMove(p) {
-    await closeSheets(p);
-    const plan = await p.evaluate(() => {
-      const st = ipoState(G.match), me = G.seat, opp = other(me), seatN = me === 'host' ? 0 : 1;
-      if (st.phase === 'bid') {
-        let left = st.cash[me];
-        return { bid: st.listings.map((c, i) => {
-          const min = st.price[IPO_COS[c].s];
-          if ((i + st.q + seatN) % 2 || min + 1 > left / 2) return 0;
-          left -= min + 1; return 2; // two taps: the minimum, then one more
-        }) };
-      }
-      const S = IPO_SECTORS.map((_, s) => s), mine = (s) => ipoCount(st, me, s), theirs = (s) => ipoCount(st, opp, s);
-      const fro = st.own[me].find((c) => ipoFrothy(st, IPO_COS[c].s));
-      if (fro != null) return { cash: IPO_COS[fro].s };
-      if (st.q >= 2 && !window.__cashed && st.own[me].length) { window.__cashed = 1; return { cash: IPO_COS[st.own[me][0]].s }; }
-      const room = (s) => IPO_SECTORS[s].line == null || st.price[s] + 2 <= IPO_SECTORS[s].line;
-      for (const id of st.hands[me]) {
-        const k = IPO_NEWS[id].k;
-        let rows = null;
-        if (k === 'hype') { const s = S.find((s) => mine(s) && room(s)) ?? S.find((s) => theirs(s)); if (s != null) rows = [s]; }
-        if (k === 'viral') { const ss = S.filter((s) => room(s)); rows = [ss[0], ss[1]]; }
-        if (k === 'scandal' || k === 'reg' || k === 'short') { const s = S.find((s) => theirs(s) > mine(s)); if (s != null) rows = [s]; }
-        if (k === 'lockup' && ipoLockup(st, me).length) rows = [];
-        if (k === 'acq') { const c = st.own[opp].find((c) => st.cash[me] >= st.price[IPO_COS[c].s] + 2); if (c != null) rows = [IPO_COS[c].s]; }
-        if (rows) return { id, k, rows };
-      }
-      return { pass: true };
-    });
-    const n = await ipLog(p);
-    if (plan.bid) {
-      for (const [i, taps] of plan.bid.entries()) for (let t = 0; t < taps; t++) await p.locator('.ip-listings .ip-co').nth(i).locator('.plus').click();
-      if (!bidRounds++) await snap(p, '20-ip-bids');
-      await p.locator('.ip-seal').click();
-      await p.waitForFunction(() => ipoState(G.match).bidsIn[G.seat], null, { timeout: 8000 });
-      return;
-    }
-    if (plan.cash != null) {
-      await p.locator(`.ip-row[data-s="${plan.cash}"]`).click();
-      if (!cashed) await snap(p, '22-ip-sector');
-      await p.locator('#sheet .ip-cash').first().click();
-      if (!cashed) { cashed = true; await p.waitForFunction((n) => ipoState(G.match).log.length > n, n, { timeout: 8000 }); check(await state(p, 'ipoState(G.match).log.at(-1).k === "cash"'), 'cashed out a company from its sector sheet'); }
-    } else if (plan.pass) await p.locator('.ip-pass').click();
-    else {
-      await p.locator(`.ip-hand .ip-news[data-id="${plan.id}"]`).click();
-      if (plan.k === 'lockup') await p.locator(`.ip-hand .ip-news[data-id="${plan.id}"]`).click();
-      for (const s of plan.rows) await p.locator(`.ip-row[data-s="${s}"]`).click();
-      if (plan.k === 'acq') await p.locator('#sheet .ip-cash').first().click();
-      kinds.add(plan.k);
-    }
-    await p.waitForFunction((n) => ipoState(G.match).log.length > n, n, { timeout: 10000 });
-    ipMoves++;
-    if (!shotMid && ipMoves >= 6) { shotMid = true; await sleep(900); await snap(a, '21-ip-trading'); await snap(b, '21-ip-trading-other'); }
-  }
-  const ipReady = (p) => state(p, 'document.querySelector(".ip")?.dataset.ready === "1"');
-  for (let t = Date.now(); Date.now() - t < 300000;) {
-    if (await state(a, 'ipoState(G.match).phase === "over"')) break;
-    const p = (await ipReady(a)) ? a : (await ipReady(b)) ? b : null;
-    if (!p) { await sleep(80); continue; }
-    await ipMove(p);
-  }
-  await sleep(2600);
-  const ipEnd = (p) => state(p, 'JSON.stringify((({ winner, score, price }) => ({ winner, score, price }))(ipoState(G.match)))');
-  const ipA = await ipEnd(a);
-  check(JSON.parse(ipA).winner && ipA === await ipEnd(b), `the market closes the same on both phones, after ${bidRounds} sealed bids and ${ipMoves} trades`);
-  console.log(`       (news played: ${[...kinds].join(', ')})`);
-  check(await state(a, 'ipoState(G.match).log.filter((e) => e.k === "earn").length') === 4, 'four quarters of earnings');
-  const ipWinner = JSON.parse(ipA).winner;
-  const [ipW, ipL] = ipWinner === await state(a, 'G.seat') ? [a, b] : [b, a];
-  await snap(ipW, '23-ip-end');
-  check((await ipW.locator('#sheet').innerText()).includes('You win'), 'winner sees the win card');
-  check((await ipL.locator('#sheet').innerText()).includes('closes richer'), 'loser sees who closed richer');
-  await sheetBtn(a, 'Back to the shelf');
-  await a.locator('.gbox').first().waitFor({ timeout: 8000 }); await b.locator('.gbox').first().waitFor({ timeout: 8000 });
-  await sleep(800);
-  check(/IPOs [01] [01]/.test((await a.locator('.score-grid').innerText()).replace(/\s+/g, ' ')), 'score sheet has an IPOs row with the win');
-  await snap(a, '24-shelf-four');
+  check(await a.locator('.gbox').count() === 3, 'three games on the shelf');
+  await snap(a, '24-shelf-three');
 
   await a.locator('#chatBtn').click();
   await snap(a, '11-chat-sheet');
@@ -493,7 +407,7 @@ try {
   failures++;
   console.error('\n' + e.stack);
   for (const [n, p] of [['A', a], ['B', b]]) {
-    const d = await p.evaluate(() => JSON.stringify({ seat: G.seat, online: Net.online, subs: [...Net.subs.keys()], moves: G.match && G.match.moves, screen: cur.name, turn: G.match && G.match.game === 'c4' ? c4State(G.match).turn : null })).catch((x) => String(x));
+    const d = await p.evaluate(() => JSON.stringify({ seat: G.seat, online: Net.online, subs: [...Net.subs.keys()], moves: G.match && G.match.moves, rps:G.match?.rps, game:G.match?.game, screen: cur.name, turn: G.match && G.match.game === 'c4' ? c4State(G.match).turn : null })).catch((x) => String(x));
     console.error(n, d);
   }
   await snap(a, 'ERR-a').catch(() => {}); await snap(b, 'ERR-b').catch(() => {});

@@ -2,16 +2,17 @@
   "name": "our-game-shelf",
   "version": "1.0.0",
   "private": true,
-  "description": "Two-player games (Connect Four, Battleships, Hues, IPOs) for two phones, kept in sync by Firebase.",
+  "description": "Connect Four, Battleships and Hues on the watercolour game shelf.",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "start": "node tools/firebase-config.mjs --stub && firebase emulators:start --project demo-gameshelf",
     "check": "for f in public/js/*.js; do node --check \"$f\" || exit 1; done",
-    "test": "npm run test:e2e",
-    "test:e2e": "node tools/firebase-config.mjs --stub && firebase emulators:exec --project demo-gameshelf \"node tests/e2e/two-players.mjs\"",
-    "deploy": "firebase deploy --only hosting,firestore:rules,database"
+    "test": "npm run test:rules && npm run test:e2e",
+    "test:e2e": "node tools/firebase-config.mjs --stub && firebase emulators:exec --project demo-gameshelf \"node tests/e2e/two-players.mjs && node tests/e2e/hues-bugs.mjs\"",
+    "deploy": "firebase deploy --only hosting,firestore:rules,database",
+    "test:rules": "node tests/unit/hues.mjs && node tests/unit/table-history.mjs"
   },
   "devDependencies": {
     "firebase-tools": "^15.34.1",

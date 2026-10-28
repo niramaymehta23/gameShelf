@@ -56,6 +56,8 @@ function fieldPaths(obj, pre = '', out = {}) {
 
 const Net = {
   online: false,
+  serverOffset: 0,
+  now() { return Date.now() + this.serverOffset; },
   started: false,
   subs: new Map(),      // path -> number of listeners (for debugging)
   statusFns: new Set(),
@@ -64,6 +66,7 @@ const Net = {
   connect() {
     if (this.started) return;
     this.started = true;
+    FB.db.ref('.info/serverTimeOffset').on('value', s => { this.serverOffset = Number(s.val()) || 0; });
     FB.db.ref('.info/connected').on('value', (s) => {
       const on = !!s.val();
       if (on) Live.publish();

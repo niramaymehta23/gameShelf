@@ -1,9 +1,26 @@
 'use strict';
 // ================= lobby screens =================
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // no I or O
-const TILE_POINTS = { A: 1, B: 3, C: 3, D: 2, E: 1, F: 4, G: 2, H: 4, J: 8, K: 5, L: 1, M: 3, N: 1, P: 3, Q: 10, R: 1, S: 1, T: 1, U: 1, V: 4, W: 4, X: 8, Y: 4, Z: 10 };
-const codeTile = (c) => h('span', { class: 'tile' }, c, h('sub', null, TILE_POINTS[c] || 1));
+const codeTile = (c) => h('span', { class: 'tile' }, c);
 const randCode = () => Array.from({ length: 4 }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join('');
+
+function tableHistoryList() {
+  const list = h('div', { class: 'table-history-list' });
+  const draw = () => {
+    const rows = TableHistory.list();
+    list.replaceChildren(...(rows.length ? rows.map(row => {
+      const rejoin = h('button', { class: 'btn btn-ink', onclick: () => TableHistory.rejoin(row, rejoin), 'aria-label': 'Rejoin table ' + row.code }, 'Rejoin');
+      return h('div', { class: 'table-history-row' },
+        h('div', null, h('b', null, row.me + (row.partner ? ' & ' + row.partner : ' · waiting for a partner')),
+          h('span', { class: 'script' }, row.code), h('small', null, 'Last visited ' + new Date(row.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }))),
+        rejoin, h('button', { class: 'history-remove', 'aria-label': 'Remove ' + row.code + ' from history', onclick: () => { TableHistory.forget(row.code); draw(); } }, 'Remove'));
+    }) : [h('p', { class: 'muted' }, 'Tables you visit on this device will appear here.')]));
+  };
+  draw(); return list;
+}
+function showTableHistory() {
+  openSheet({ title: 'Your recent tables', body: tableHistoryList(), sub: 'Saved on this device', actions: [{ label: 'Back', kind: 'ghost' }] });
+}
 
 Screens.loading = () => ({
   cls: 'waiting',
@@ -37,6 +54,8 @@ Screens.landing = () => {
   }
   function refreshButtons() {
     el.querySelectorAll('[data-needs-name]').forEach((b) => { b.disabled = !G.name; });
+    const go = el.querySelector('#joinGo'), code = el.querySelector('#codeInput');
+    if (go && !go.dataset.busy) go.disabled = !G.name || code.value.length !== 4;
   }
   function draw() {
     el.replaceChildren();
@@ -66,7 +85,7 @@ Screens.landing = () => {
         tiles.forEach((t, i) => {
           const ch = v[i] || '';
           if (ch && ch !== last[i]) { t.classList.remove('pop'); void t.offsetWidth; t.classList.add('pop'); }
-          t.replaceChildren(ch, ch ? h('sub', null, TILE_POINTS[ch] || 1) : '');
+          t.textContent = ch;
           t.classList.toggle('empty', !ch);
           t.classList.toggle('cursor', i === v.length && document.activeElement === input);
         });
@@ -74,7 +93,7 @@ Screens.landing = () => {
         go.disabled = v.length < 4 || !G.name;
         err.textContent = '';
       };
-      const go = h('button', { class: 'btn btn-primary', onclick: () => join(input.value, err, go) }, 'Sit down');
+      const go = h('button', { id: 'joinGo', class: 'btn btn-primary', onclick: () => join(input.value, err, go) }, 'Sit down');
       input.addEventListener('input', () => { Sound.tap(); paint(); if (input.value.length === 4 && G.name) join(input.value, err, go); });
       input.addEventListener('focus', paint); input.addEventListener('blur', paint);
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && input.value.length === 4) join(input.value, err, go); });
@@ -89,6 +108,7 @@ Screens.landing = () => {
       setTimeout(() => { paint(); }, 0);
     }
     el.append(hero, card);
+    if (mode === 'start' && TableHistory.list().length) el.append(h('div', { class: 'paper table-history' }, h('div', { class: 'tape sage' }), h('h2', { class: 'display' }, 'Your recent tables'), h('p', { class: 'muted' }, 'Codes and players saved on this device.'), tableHistoryList()));
     if (mode === 'join') el.append(h('button', { class: 'back-link', onclick: () => { mode = 'start'; draw(); } }, '← I’m setting up the table'));
     else el.append(h('p', { class: 'hand-note', style: 'margin-top:auto' }, 'One of you sets up a table and shares the four-letter code. The other joins with it.'));
     refreshButtons();
@@ -217,23 +237,12 @@ const GAMES = {
       { t: 'Empty your hand to win', d: 'If your last card starts a +2 or +4 chain, it has to finish first, and your partner still gets the turn they’re owed.' },
     ],
   },
-  ip: {
-    name: 'IPOs', cls: 'ip', art: 'art/box-ip.png',
-    howTo: [
-      { t: 'Who leads', d: 'Rock, paper, scissors, best of three. The winner leads the first quarter; the lead swaps each quarter. Four quarters, 15M each to start.', art: 'art/rps-rock.png' },
-      { t: 'The market', d: 'Ten sectors, each with a price. A company is worth its sector’s price. Tap a sector to see its companies, its bubble line and its dividend.', art: 'art/box-ip.png' },
-      { t: 'Roadshow', d: 'Four companies list each quarter. Bid on any of them at once, in secret: at least the sector’s price, no more than you have in all. Higher bid wins and pays; on a tie the poorer player wins. Each sale lifts its sector by 1.' },
-      { t: 'Trading', d: 'Take turns: play a news card, cash out a company (tap its sector; the price then drops by 1), or pass. It ends when you both pass in a row. You get three news cards a quarter and keep five at most.' },
-      { t: 'Earnings', d: 'Shorts settle. Any sector above its bubble line pops: every company in it is gone, and its price resets. Then each company you still hold pays its dividend.' },
-      { t: 'Richest wins', d: 'After the fourth quarter, your money plus the price of every company you hold. Pump what you own, push what your partner owns over the line, and cash out before it pops.' },
-    ],
-  },
 };
 
 // ---------------- how to play ----------------
 // The same steps show before every new game, behind the ? in a game, and on the shelf.
 function howToList(key) {
-  return h('ol', { class: 'howto' }, ...GAMES[key].howTo.map((s, i) => h('li', null,
+  return h('ol', { class: 'howto' }, ...(key === 'hu' ? hueRuleSteps(G.match?.game === 'hu' ? G.match : null) : GAMES[key].howTo).map((s, i) => h('li', null,
     h('span', { class: 'n' }, i + 1),
     h('div', null, h('b', null, s.t), h('span', null, s.d)),
     s.art ? h('img', { class: 'wc', src: s.art, alt: '' }) : null)));
@@ -268,8 +277,8 @@ Screens.shelf = () => {
         h('span', { class: 'script' }, `${myName()} & ${P}’s`),
         h('h1', { class: 'display h2', style: 'margin:0' }, 'Pick a game'),
       ));
-      const cubby = h('div', { class: 'cubby' });
-      for (const key of ['c4', 'bs', 'hu', 'ip']) {
+      const cubby = h('div', { class: 'cubby', role: 'region', 'aria-label': 'Games · scroll to browse', tabindex: '0' });
+      for (const key of Object.keys(GAMES)) {
         const g = GAMES[key];
         const box = h('button', { class: `gbox ${g.cls}${g.soon ? ' soon' : ''}`, 'aria-label': g.name + (g.soon ? ', coming soon' : '') },
           h('img', { class: 'wc', src: g.art, alt: '' }),
@@ -291,6 +300,7 @@ Screens.shelf = () => {
       el.append(dresser, note,
         h('div', { class: 'shelf-foot' },
           h('div', { class: 'table-code' }, 'Table code ', h('b', null, G.code)),
+          h('button', { class: 'btn btn-ghost', onclick: showTableHistory }, 'Recent tables'),
           h('button', { class: 'btn btn-ghost', onclick: () => openSheet({
             title: 'Get up from the table?',
             body: `You can come back any time with code ${G.code}.`,
@@ -364,7 +374,7 @@ Screens.match = () => {
     update() {
       const m = G.match; if (!m) return;
       const st = rpsState(m);
-      const want = !howToDone ? 'howto' : (!st.starter || !introDone) ? 'rps' : m.game;
+      const want = !howToDone ? 'howto' : (!st.starter || !introDone) ? 'rps' : (m.game === 'hu' && m.hueVersion === 2 && !m.hueRules) ? 'hue-rules' : m.game;
       if (want !== phaseName) setPhase(want);
       phase && phase.update(m);
     },
@@ -384,9 +394,9 @@ Screens.match = () => {
     };
     if (name === 'howto') phase = makeHowTo(box, ctx, G.match.game);
     else if (name === 'rps') phase = makeRPS(box, ctx);
+    else if (name === 'hue-rules') phase = makeHueRules(box);
     else if (name === 'c4') phase = makeC4(box, ctx);
     else if (name === 'hu') phase = makeHU(box, ctx);
-    else if (name === 'ip') phase = makeIP(box, ctx);
     else phase = makeBS(box, ctx);
   }
   function confirmLeave() {

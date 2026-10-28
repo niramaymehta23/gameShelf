@@ -455,31 +455,3 @@ def box_hu(W=360, H=480):
 for k, v in HUE.items():
     hue_face(k, v)
 hue_wild(); hue_back(); box_hu()
-
-# ================= IPOs (the market game) =================
-# The box: a ticker chart on newsprint, a line that climbs and crashes, and a soap bubble about
-# to pop. Plus one ink-black wash stroke that CSS uses as a mask, so each sector's colour band is
-# painted in its own colour (mask-image over background-color).
-def box_ip(W=360, H=480):
-    s = Sheet(W, H)
-    sheet = poly(W, H, rot_rect(180, 262, 236, 300, -0.06))
-    s.wash(rrect(W, H, 8, 8, W - 8, H - 8, 10) & ~sheet, (52, 98, 74), strength=0.9, bloom=0.4, edge=0.7, gran=0.3, rough=0.05)
-    cols = [(150, 100, 60), (120, 170, 210), (217, 138, 166), (226, 118, 48), (196, 72, 47), (226, 168, 60), (95, 143, 95), (40, 70, 140)]
-    for i, c in enumerate(cols):
-        x = 92 + i * 23; top = 352 - (i * 22 + 30) * (0.45 if i == 7 else 1)
-        s.wash(poly(W, H, [(x, 362), (x + 16, 362), (x + 16, top), (x, top)]), c, strength=0.85, edge=1.0, rough=0.08)
-    line = [(86, 300), (130, 280), (170, 246), (210, 220), (250, 170), (268, 150), (284, 252), (300, 300)]
-    s.ink([line], width=4.2, color=(196, 72, 47), alpha=0.95)
-    s.ink([[(80, 368), (290, 362)], [(84, 140), (80, 368)]], width=2)
-    s.wash(disk(W, H, 262, 108, 46), (150, 190, 220), strength=0.25, edge=1.6, bloom=0.6, rough=0.06, blur=2)
-    s.ink([circle_path(262, 108, 46, 60)], width=2.2, color=(40, 70, 140), alpha=0.8)
-    s.ink([circle_path(262, 108, 34, 20, 3.6, 4.6)], width=3, color=(244, 236, 220), alpha=0.9)
-    splatter(s, (196, 72, 47), 6, (40, 410, 320, 455), 4)
-    save_rgba(s.rgba(), 'box-ip.png')
-
-def ipo_stroke(W=240, H=40):
-    s = Sheet(W, H)
-    s.wash(rrect(W, H, 6, 7, W - 8, H - 6, 12), (20, 20, 20), strength=0.95, edge=1.0, bloom=0.4, gran=0.4, rough=0.2)
-    save_rgba(s.rgba(), 'ipo-stroke.png')
-
-box_ip(); ipo_stroke()
