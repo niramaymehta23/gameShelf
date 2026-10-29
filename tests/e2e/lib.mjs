@@ -28,10 +28,12 @@ export async function twoPhones() {
   return { browser, a, b, errors };
 }
 
-// a screenshot, after `wait` ms so animations can finish
+// a screenshot, after `wait` ms so animations can finish; with CAPTURE=<dir> the page's DOM is saved
+// there too, for tests/visual/compare.mjs
 export async function snap(p, name, wait = 0) {
   if (wait) await p.waitForTimeout(wait);
   await p.screenshot({ path: path.join(SHOTS, name + '.png') });
+  if (process.env.CAPTURE) fs.writeFileSync(path.join(process.env.CAPTURE, name + '.html'), await p.evaluate(() => document.documentElement.outerHTML));
 }
 export const until = (p, fn, arg, timeout = 15000) => p.waitForFunction(fn, arg, { timeout });
 export const state = (p, expr) => p.evaluate(expr);
