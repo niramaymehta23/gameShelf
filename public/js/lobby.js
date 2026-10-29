@@ -294,10 +294,10 @@ Screens.shelf = () => {
       const cubby = h('div', { class: 'cubby', role: 'region', 'aria-label': 'Games · scroll to browse', tabindex: '0' });
       for (const key of Object.keys(GAMES)) {
         const g = GAMES[key];
-        const box = h('button', { class: `gbox ${g.cls}${g.soon ? ' soon' : ''}`, 'aria-label': g.name + (g.soon ? ', coming soon' : '') },
+        const box = h('button', { class: `gbox ${g.cls}`, 'aria-label': g.name },
           h('img', { class: 'wc', src: g.art, alt: '' }),
           h('span', { class: 'lbl' }, g.name),
-          g.soon ? h('span', { class: 'sticker' }, 'Soon') : h('span', { class: 'sticker saved', hidden: true }, 'Saved'));
+          h('span', { class: 'sticker saved', hidden: true }, 'Saved'));
         box.addEventListener('click', () => pick(key, box));
         boxes[key] = box;
         cubby.append(box);
@@ -328,7 +328,7 @@ Screens.shelf = () => {
   function paintScore() {
     const res = (G.table && G.table.results) || {};
     const cells = [h('span'), h('span', { class: 'hd n', title: myName() }, firstName(myName())), h('span', { class: 'hd n', title: partnerName() }, firstName(partnerName()))];
-    for (const key of Object.keys(GAMES).filter((k) => !GAMES[k].soon)) {
+    for (const key of Object.keys(GAMES)) {
       let me = 0, them = 0;
       for (const id in res) { const r = res[id]; if (r.g !== key) continue; if (r.w === G.seat) me++; else if (r.w === other(G.seat)) them++; }
       cells.push(h('span', null, GAMES[key].name), h('span', { class: 'n' }, me), h('span', { class: 'n' }, them));
@@ -345,7 +345,6 @@ Screens.shelf = () => {
   function pick(key, box) {
     const g = GAMES[key];
     Sound.tap(); vibrate(8);
-    if (g.soon) { box.classList.add('pulled'); setTimeout(() => box.classList.remove('pulled'), 400); toast(`${g.name} is still on order`); return; }
     box.classList.add('pulled');
     const saved = savedId(key);
     const body = h('div', { class: 'sheet-body' },
