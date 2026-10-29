@@ -273,7 +273,8 @@ const GAMES = {
       { t: 'Who spins', d: 'Rock, paper, scissors, best of three. The winner spins the wheel: nine letters, one of them in the middle. You both get the same wheel.', art: 'art/rps-rock.png' },
       { t: 'Swipe a word', d: 'Put a finger on a letter, slide across the others and let go. Slide back to take off the last letter. Each letter on the wheel goes in a word once.' },
       { t: 'What counts', d: 'Four letters or more, and every word needs the middle letter. No plurals or names. Every wheel hides a nine-letter word.' },
-      { t: 'First to five', d: 'A word is only for whoever finds it first, so keep an eye on your partner’s list. Stuck? Shuffle turns the letters round.' },
+      { t: 'First to five', d: 'You each find your own words, and you can both find the same one. Your partner’s words show as stars until the race is over.' },
+      { t: 'Stuck?', d: 'Shuffle turns the letters round. Once you have three words, the bulb shows the first letter of a word you haven’t found, then the second: two letters a game. The flag gives up, and your partner wins.' },
     ],
   },
 };

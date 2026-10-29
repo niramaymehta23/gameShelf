@@ -2,14 +2,18 @@
 // ================= Word Wheel: nine letters, one in the middle, first to five words =================
 // The rock, paper, scissors winner spins the wheel once: match.ww = {by, n}, n an index into WW_WHEELS
 // (public/js/wheels.js, built by tools/make_wheels.py with every word each wheel allows). Then both
-// phones race on the same wheel. A word is claimed by appending match.finds.fNNN = {by, w} in a
-// transaction that checks the latest replay, so the same word can't be claimed twice at once.
-// wwState(m) replays the finds in key order: a word counts once, for whoever found it first, only if
-// it's in the wheel's list; the first to WW_TO wins. Wrong words are refused on the phone and never
-// written. Nothing derived is stored.
+// phones race on the same wheel, each finding words for themselves: both can find the same word, and
+// neither sees the other's words (only one star per letter) until the race is over. A word is claimed by
+// appending match.finds.fNNN = {by, w} in a transaction that checks the latest replay, so a quick double
+// send can't count twice. wwState(m) replays the finds in key order: a word counts once per player, only
+// if it's in the wheel's list; the first to WW_TO wins. Giving up is a find too, {by, up: true}: the
+// other player wins there and then. Wrong words are refused on the phone and never written. Hints
+// (from WW_CLUE_AT words, WW_CLUES letters a game) are only on the phone that asked, never written.
+// Nothing derived is stored.
 
 const WW_TO = 5;    // words to win
 const WW_MIN = 4;   // letters in a word, at least
+const WW_CLUE_AT = 3, WW_CLUES = 2; // hints: open once you have three words, two letters a game
 
 // ---------- the wheels ----------
 const wwCache = [];
@@ -44,27 +48,32 @@ function wwSetup(m) {
 }
 function wwState(m) {
   const setup = wwSetup(m);
-  const st = { setup, wheel: setup ? wwWheel(setup.n) : null, finds: [], found: new Map(), score: { host: 0, guest: 0 }, winner: null };
+  const st = { setup, wheel: setup ? wwWheel(setup.n) : null, finds: [], found: { host: new Set(), guest: new Set() }, score: { host: 0, guest: 0 }, winner: null, gaveUp: null };
   if (!setup) return st;
   for (const key of sortedKeys(m.finds)) {
     if (st.winner) break;
     const f = m.finds[key];
-    if (!f || (f.by !== 'host' && f.by !== 'guest') || !st.wheel.set.has(f.w) || st.found.has(f.w)) continue;
-    st.found.set(f.w, f.by);
+    if (f && f.up === true && (f.by === 'host' || f.by === 'guest')) { st.gaveUp = f.by; st.winner = f.by === 'host' ? 'guest' : 'host'; break; }
+    if (!f || (f.by !== 'host' && f.by !== 'guest') || !st.wheel.set.has(f.w) || st.found[f.by].has(f.w)) continue;
+    st.found[f.by].add(f.w);
     st.finds.push({ key, by: f.by, w: f.w });
     if (++st.score[f.by] >= WW_TO) st.winner = f.by;
   }
   return st;
 }
-// Why this word can't be claimed ({k: 'short' | 'middle' | 'plural' | 'word' | 'found', by}), or null.
-function wwRefusal(st, w) {
+// Why `seat` can't claim this word ({k: 'short' | 'middle' | 'plural' | 'word' | 'found'}), or null.
+// The partner having it doesn't matter: each player finds their own.
+function wwRefusal(st, w, seat) {
   const x = st.wheel;
   if (w.length < WW_MIN) return { k: 'short' };
   if (!w.includes(x.c)) return { k: 'middle' };
-  if (st.found.has(w)) return { k: 'found', by: st.found.get(w) };
+  if (st.found[seat].has(w)) return { k: 'found' };
   if (!x.set.has(w)) return { k: /[^S]S$/.test(w) && x.set.has(w.slice(0, -1)) ? 'plural' : 'word' };
   return null;
 }
+// The word a hint is about: the most everyday word (the lists go most common first) of six letters or
+// fewer that `seat` hasn't found yet.
+const wwClueWord = (st, seat) => st.wheel.words.find((w) => w.length <= 6 && !st.found[seat].has(w)) || null;
 
 // ---------- the RPS winner spins ----------
 function makeWWSpin(box) {
@@ -124,14 +133,16 @@ function makeWW(box, ctx) {
     svgEl('<svg class="ww-lines" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="48"/><circle class="mid" cx="50" cy="50" r="15.5"/>'
       + Array.from({ length: 8 }, (_, i) => { const a = (i * 45 - 90) * Math.PI / 180; return `<line x1="${50 + 15.5 * Math.cos(a)}" y1="${50 + 15.5 * Math.sin(a)}" x2="${50 + 48 * Math.cos(a)}" y2="${50 + 48 * Math.sin(a)}"/>`; }).join('') + '</svg>'),
     ...letters, trail);
-  const shuffleBtn = h('button', { class: 'icon-btn ww-shuffle', html: ICON.shuffle, 'aria-label': 'Shuffle the letters', onclick: shuffle });
+  const shuffleBtn = h('button', { class: 'icon-btn ww-tool ww-shuffle', html: ICON.shuffle, 'aria-label': 'Shuffle the letters', onclick: shuffle });
+  const clueBtn = h('button', { class: 'icon-btn ww-tool ww-clue', html: ICON.bulb, 'aria-label': 'A hint', onclick: clue });
+  const giveBtn = h('button', { class: 'icon-btn ww-tool ww-give', html: ICON.flag, 'aria-label': 'Give up', onclick: giveUp });
   const status = h('div', { class: 'status-line ww-status', 'aria-live': 'polite' });
   const listMe = h('ol', { class: 'ww-list' }), listThem = h('ol', { class: 'ww-list' });
   const found = h('div', { class: 'paper ww-found' }, h('div', { class: 'tape' }),
     h('div', { class: 'ww-col' }, h('h3', null, 'Yours'), listMe),
     h('div', { class: 'ww-col' }, h('h3', null, `${firstName(P)}’s`), listThem));
   const endArea = h('div', { class: 'end-area' });
-  const root = h('div', { class: 'ww' }, sb, word, h('div', { class: 'ww-stage' }, wheel, shuffleBtn), status, found, endArea);
+  const root = h('div', { class: 'ww' }, sb, word, h('div', { class: 'ww-stage' }, wheel, giveBtn, clueBtn, shuffleBtn), status, found, endArea);
   box.append(root);
 
   const say = (text) => status.replaceChildren(text);
@@ -211,13 +222,13 @@ function makeWW(box, ctx) {
     path = [];
     if (!w) { paint(); return; }
     if (w.length === 1) { paint(); return; } // a tap on one letter isn't an attempt
-    const no = pending.has(w) ? { k: 'sent' } : wwRefusal(st, w);
+    const no = pending.has(w) ? { k: 'sent' } : wwRefusal(st, w, seat);
     if (!no) { claim(w); return; }
     Sound.lose(); vibrate(20); shake(word, 7);
     wrong = w;
     note(no.k === 'short' ? 'Four letters or more'
       : no.k === 'middle' ? `Every word needs the middle ${st.wheel.c}`
-      : no.k === 'found' ? (no.by === seat ? `You already have ${w}` : `${P} already found ${w}`)
+      : no.k === 'found' ? `You already have ${w}`
       : no.k === 'plural' ? `No plurals: ${w} doesn’t count`
       : no.k === 'sent' ? `Already sending ${w}…`
       : `${w} isn’t a word here`, 1700);
@@ -230,9 +241,9 @@ function makeWW(box, ctx) {
       await Net.timed(FB.fs.runTransaction(async (tx) => {
         const ref = FB.fs.doc(matchPath(id)), snap = await tx.get(ref), latest = snap.data();
         if (!snap.exists) throw Error('This game is no longer available.');
-        const s = wwState(latest), by = s.found.get(w);
+        const s = wwState(latest);
         if (s.winner) throw Error('The race is already over.');
-        if (by) throw Error(by === seat ? `You already have ${w}` : `${P} got ${w} first`);
+        if (s.found[seat].has(w)) throw Error(`You already have ${w}`);
         tx.update(ref, { ['finds.f' + pad3(Object.keys(latest.finds || {}).length)]: { by: seat, w } });
       }));
     } catch (e) {
@@ -240,6 +251,43 @@ function makeWW(box, ctx) {
       pending.delete(w);
       if (!dead) { Sound.lose(); note(writeError(e, 'Couldn’t save that word. Try again.'), 2400); }
     }
+  }
+
+  // ---- a hint: one more letter of a word you haven't found (this phone only, kept per game) ----
+  let hint = { w: null, n: 0, used: 0 };
+  const hintKey = () => 'ww-hint:' + m.id;
+  const hintOn = () => hint.w && hint.n && !st.found[seat].has(hint.w);
+  function clue() {
+    if (!canPlay()) return;
+    if (st.score[seat] < WW_CLUE_AT) { Sound.lose(); note(`Hints open once you have ${WW_CLUE_AT} words`); return; }
+    if (hint.used >= WW_CLUES) { Sound.lose(); note('No hints left this game'); return; }
+    if (!hintOn()) hint = { w: wwClueWord(st, seat), n: 0, used: hint.used };
+    if (!hint.w) { note('No more words to hint at'); return; }
+    hint.n++; hint.used++;
+    Pref.set(hintKey(), JSON.stringify(hint));
+    Sound.pick(); path = []; flash = wrong = '';
+    paint();
+  }
+
+  // ---- giving up: the partner wins (written like a word, so both phones end the same way) ----
+  function giveUp() {
+    if (!canPlay()) return;
+    openSheet({
+      title: 'Give up?', body: `${P} wins this one, ${st.score[opp]}–${st.score[seat]}, and you both see each other’s words.`,
+      actions: [{ label: 'Keep going', kind: 'primary' }, { label: 'Give up', kind: 'ghost', onClick: sendGiveUp }],
+    });
+  }
+  async function sendGiveUp() {
+    if (!canPlay()) return;
+    const id = m.id;
+    try {
+      await Net.timed(FB.fs.runTransaction(async (tx) => {
+        const ref = FB.fs.doc(matchPath(id)), snap = await tx.get(ref), latest = snap.data();
+        if (!snap.exists) throw Error('This game is no longer available.');
+        if (wwState(latest).winner) throw Error('The race is already over.');
+        tx.update(ref, { ['finds.f' + pad3(Object.keys(latest.finds || {}).length)]: { by: seat, up: true } });
+      }));
+    } catch (e) { if (!dead) { Sound.lose(); note(writeError(e, 'Couldn’t give up. Try again.'), 2400); } }
   }
 
   // ---- shuffling: the outer letters swap places (on this phone only) ----
@@ -269,19 +317,25 @@ function makeWW(box, ctx) {
   }
   function paintWord() {
     const w = typed() || wrong;
-    word.classList.toggle('empty', !w);
+    word.classList.toggle('empty', !w && !hintOn());
+    // nothing typed, a hint out: its first letters, then a blank a letter
+    if (!w && hintOn()) { word.replaceChildren(...[...hint.w].map((ch, i) => h('span', { class: 'tile clue' + (i < hint.n ? '' : ' blank') }, i < hint.n ? ch : ''))); return; }
     word.replaceChildren(...(w ? [...w].map((ch) => h('span', { class: 'tile' + (w === wrong ? ' wrong' : '') }, ch)) : [h('span', { class: 'ww-hint' }, 'Swipe across the letters')]));
   }
   function paintLists() {
-    const row = (w, cls) => h('li', { class: cls }, w);
-    listMe.replaceChildren(...st.finds.filter((f) => f.by === seat).map((f) => row(f.w)), ...[...pending].filter((w) => !st.found.has(w)).map((w) => row(w, 'sending')));
-    listThem.replaceChildren(...st.finds.filter((f) => f.by === opp).map((f) => row(f.w)));
+    const row = (w, cls, key) => h('li', { class: cls, 'data-k': key }, w);
+    // the partner's words stay hidden, one star a letter, until the race is over
+    const hidden = (f) => h('li', { class: 'hidden', 'data-k': f.key, 'aria-label': `a ${f.w.length}-letter word` }, ...[...f.w].map(() => h('i')));
+    listMe.replaceChildren(...st.finds.filter((f) => f.by === seat).map((f) => row(f.w, null, f.key)), ...[...pending].filter((w) => !st.found[seat].has(w)).map((w) => row(w, 'sending')));
+    listThem.replaceChildren(...st.finds.filter((f) => f.by === opp).map((f) => (over ? row(f.w, null, f.key) : hidden(f))));
     scoreMe.textContent = st.score[seat]; scoreThem.textContent = st.score[opp];
   }
   function paint() {
     if (dead || !st || !st.setup) return;
     paintWheel(); paintLists();
-    shuffleBtn.disabled = !canPlay();
+    shuffleBtn.disabled = giveBtn.disabled = clueBtn.disabled = !canPlay();
+    clueBtn.classList.toggle('locked', st.score[seat] < WW_CLUE_AT || hint.used >= WW_CLUES);
+    clueBtn.dataset.left = WW_CLUES - hint.used;
     if (over) return;
     paintWord();
     say(flash || (spinning ? 'Spinning…' : !theyreIn() ? `Waiting for ${P} to join…` : path.length ? 'Let go to send it' : `Every word needs the middle ${st.wheel.c}`));
@@ -291,8 +345,8 @@ function makeWW(box, ctx) {
   function announce() {
     const fresh = st.finds.slice(Math.max(seen, 0));
     if (seen >= 0) for (const f of fresh) {
-      const el = [...(f.by === seat ? listMe : listThem).children].find((li) => li.textContent === f.w);
-      if (f.by === opp) { Sound.pop(); note(`${P} found ${f.w}`, 2000); }
+      const el = (f.by === seat ? listMe : listThem).querySelector(`[data-k="${f.key}"]`);
+      if (f.by === opp) { Sound.pop(); note(`${P} found a word`, 2000); }
       (f.by === seat ? scoreMe : scoreThem).animate([{ transform: 'scale(1)' }, { transform: 'scale(1.45)' }, { transform: 'scale(1)' }], { duration: 420, easing: 'cubic-bezier(.34,1.56,.64,1)' });
       el && el.classList.add('new');
     }
@@ -303,17 +357,18 @@ function makeWW(box, ctx) {
     if (over) return;
     over = true; path = []; drag = null;
     recordResult(m, st.winner);
-    const won = st.winner === seat, a = st.score[seat], b = st.score[opp], nine = st.wheel.nine[0];
+    const won = st.winner === seat, a = st.score[seat], b = st.score[opp], nine = st.wheel.nine[0], gave = st.gaveUp;
     // show the nine-letter word on the tiles, and a few more words nobody found
     word.classList.remove('empty');
     word.replaceChildren(...[...nine].map((ch) => h('span', { class: 'tile shown' }, ch)));
-    const left = st.wheel.words.filter((w) => !st.found.has(w) && !st.wheel.nine.includes(w)).slice(0, 4);
-    say(won ? 'You win!' : `${P} wins`);
+    const left = st.wheel.words.filter((w) => !st.found.host.has(w) && !st.found.guest.has(w) && !st.wheel.nine.includes(w)).slice(0, 4);
+    say(gave ? (won ? `${P} gave up. You win!` : 'You gave up') : won ? 'You win!' : `${P} wins`);
     found.append(h('p', { class: 'ww-left' }, `The nine-letter word: ${nine}.`, ...(left.length ? [h('br'), `Nobody found ${left.join(', ')}.`] : [])));
     paint();
     endArea.replaceChildren(endBar(m));
     if (quiet) return;
-    endSheetSoon(m, () => dead, 900, { title: won ? `You win, ${a}–${b}!` : `${P} wins, ${b}–${a}`, body: `The nine-letter word was ${nine}. The wheel had ${st.wheel.words.length} words.`, good: won });
+    const title = gave ? (won ? `${P} gave up: you win, ${a}–${b}` : `You gave up, ${a}–${b}`) : won ? `You win, ${a}–${b}!` : `${P} wins, ${b}–${a}`;
+    endSheetSoon(m, () => dead, gave ? 300 : 900, { title, body: `The nine-letter word was ${nine}. The wheel had ${st.wheel.words.length} words.`, good: won });
   }
   async function spinIn() {
     // the wheel spins in on both phones the same way, once per game, then the race is on
@@ -330,7 +385,8 @@ function makeWW(box, ctx) {
       const first = !st;
       st = wwState(m);
       if (!st.setup) return;
-      for (const w of pending) if (st.found.has(w)) pending.delete(w);
+      if (first) try { const v = JSON.parse(Pref.get(hintKey()) || 'null'); if (v && typeof v.w === 'string') hint = { w: v.w, n: v.n | 0, used: v.used | 0 }; } catch (e) {}
+      for (const w of pending) if (st.found[seat].has(w)) pending.delete(w);
       wwSeen.add(G.code, st.setup.n);
       if (first && !st.finds.length && Pref.get('ww-spun:' + m.id) !== '1') spinIn();
       paint();

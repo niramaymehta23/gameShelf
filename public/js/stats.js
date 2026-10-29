@@ -135,7 +135,7 @@ const STATS_GAME = {
     }
     if (!st.winner) return '';
     rec[st.winner].wins++;
-    return `${st.score[st.winner]}–${st.score[other(st.winner)]}, the wheel’s nine-letter word was ${st.wheel.nine[0]}`;
+    return `${st.score[st.winner]}–${st.score[other(st.winner)]}${st.gaveUp ? ' when the other gave up' : ''}, the wheel’s nine-letter word was ${st.wheel.nine[0]}`;
   },
 };
 

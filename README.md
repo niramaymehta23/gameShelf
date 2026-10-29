@@ -45,7 +45,8 @@ The dot under your partner's name tells you where they are: **green** on the sam
 - **Word Wheel.** Like the newspaper puzzle: nine letters on a wheel, one in the middle. The rock,
   paper, scissors winner spins it, and you both race on the same wheel. Put a finger on a letter and
   swipe across the others to make a word, then let go. Four letters or more, every word needs the
-  middle letter, each letter once, no plurals. A word only counts for whoever finds it first; first
+  middle letter, each letter once, no plurals. You each find your own words (both can find the same
+  one), and your partner's words show only as stars, one a letter, until the race is over. First
   to five wins. There are 100 wheels, each with a nine-letter word hidden in it, and every word each
   one allows is worked out in advance, so a wrong word is refused at once.
 
@@ -134,8 +135,8 @@ a saved game is just a log that stops, and carrying on is replaying it.
   at once while it's still being confirmed.
 - New Hues games write each move in a **transaction** that checks the move against the latest log
   first, so a stale tap can't sneak in out of order. (Saved games from before that keep their
-  original replay.) Word Wheel words are claimed the same way, so the same word can't be taken by
-  both phones at once. The one-time choices (Hues rules, the Quickfire setup, the wheel)
+  original replay.) Word Wheel words are claimed the same way, so a quick double send can't count
+  the same word twice. The one-time choices (Hues rules, the Quickfire setup, the wheel)
   are transactions too, so only the rock, paper, scissors winner can make them, and only once.
 - The replay functions are pure, and a test (`tests/unit/replay.mjs`) checks them against recorded
   results for a few hundred games. Changing how old games replay would break saved games, so it

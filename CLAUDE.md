@@ -189,11 +189,13 @@ Regenerating art: `python3 tools/paint_art.py` (numpy, scipy, Pillow) writes to 
   `--vvh`) so the tiles, clock and status stay above the keyboard. Regenerate the dictionary with
   `python3 tools/make_words.py enable1.txt count_1w.txt` (offensive words are kept out of the everyday list).
 - `wordwheel.js` (Word Wheel, like the newspaper puzzle). The RPS winner spins once: `match.ww = {by, n}`, `n` from
-  `wwPick(code, finished)`, a per-table order of all 100 wheels, so a table sees each once before repeats. Words
-  are claimed by appending `finds.fNNN = {by, w}` in a transaction that re-checks `wwState` (two phones can't take
-  the same word); the replay also skips repeats, words not in the wheel's list and anything after the winner.
-  First to `WW_TO` (5). Short words, ones without the middle letter, plurals, non-words and found words are refused
-  on the phone and never written. Swiping: letters are hit-tested in the wheel's own 0–100 box (`WW_HIT` is small
+  `wwPick(code, finished)`, a per-table order of all 100 wheels, so a table sees each once before repeats. Each player
+  finds their own words (`found.host` / `found.guest`): both can find the same word, and the partner's words show as
+  stars, one a letter, until the race is over (a peek with dev tools would show them; same trust model as above).
+  Words are claimed by appending `finds.fNNN = {by, w}` in a transaction that re-checks `wwState`; the replay skips a
+  player's repeats, words not in the wheel's list and anything after the winner. First to `WW_TO` (5). Short words,
+  ones without the middle letter, plurals, non-words and your own found words are refused on the phone and never
+  written. Swiping: letters are hit-tested in the wheel's own 0–100 box (`WW_HIT` is small
   enough to slide between two letters; moving back onto the previous letter removes the last one); a real
   keyboard types too. Shuffle only reorders letters on this phone. The partner's swipe is deliberately not in
   presence (it would give words away). Lists are ENABLE, so obscure words count; the wheels themselves are
@@ -208,7 +210,7 @@ Regenerating art: `python3 tools/paint_art.py` (numpy, scipy, Pillow) writes to 
   safe-area padding lives on `:root`.
 - Firebase trusts clients (it's for two people): anyone with a table code can read and write it.
   Secrets are visible to a curious partner with dev tools: RPS picks before the reveal, the
-  opponent's fleet, in Hues the other hand and the deck order, in Quickfire the other's pick before the reveal (and a cheat could fake their `ms`) (`huState` deals both hands on
+  opponent's fleet, in Hues the other hand and the deck order, in Quickfire the other's pick before the reveal (and a cheat could fake their `ms`), in Word Wheel the other's words (`huState` deals both hands on
   every phone from the shared seed). See roadmap.
 - Old tables are not cleaned up automatically (the old server pruned after 30 days). They're tiny.
 

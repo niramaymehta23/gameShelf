@@ -1,8 +1,10 @@
 // Word Wheel on two phones against the emulators: the RPS winner spins, both phones get the same
 // wheel, words are made by swiping across the letters (real pointer moves, routed round the rim so
 // they don't brush other letters), sliding back takes a letter off, short words, words without the
-// middle letter, non-words and the partner's words are refused without being written, the keyboard
-// types too, and the first to five wins on both phones with the result recorded.
+// middle letter, non-words and your own words again are refused without being written, the partner's
+// words show as stars until the end (and can still be found), the keyboard types too, and the first to
+// five wins on both phones with the result recorded. Hints open at three words (two letters a game);
+// in a rematch the loser of RPS gives up, and the other wins on both phones.
 //   run by npm run test:e2e (or: node tests/e2e/wordwheel.mjs with npm start running)
 import assert from 'node:assert/strict';
 import { twoPhones, URL, sleep, snap as shot, until, setUpTable, rpsRound, junk } from './lib.mjs';
@@ -44,13 +46,15 @@ async function swipe(p, word, { back = '', hold = false } = {}) {
   if (extra.length) { await hop(pts[pts.length - 1], extra[0]); await hop(extra[0], pts[pts.length - 1]); }
   if (!hold) await p.mouse.up();
 }
-// a word from the wheel nobody has found yet, not in `skip`
-const fresh = async (p, skip = []) => { const w = await wheelOf(p); const f = await p.evaluate(() => [...wwState(G.match).found.keys()]); return w.words.find((x) => !f.includes(x) && !skip.includes(x)); };
+// a word from the wheel this phone's player hasn't found yet, not in `skip`
+const fresh = async (p, skip = []) => { const w = await wheelOf(p); const f = await p.evaluate(() => [...wwState(G.match).found[G.seat]]); return w.words.find((x) => !f.includes(x) && !skip.includes(x)); };
+const has = (q, seat, w) => until(q, ([s, x]) => wwState(G.match).found[s].has(x), [seat, w]);
 async function claim(p, word) {
-  const n = await p.evaluate(() => Object.keys(G.match.finds || {}).length);
+  const seat = await p.evaluate(() => G.seat);
   await swipe(p, word);
-  await Promise.all([a, b].map((q) => until(q, ([k, w]) => Object.keys(G.match.finds || {}).length > k && wwState(G.match).found.has(w), [n, word])));
+  await Promise.all([a, b].map((q) => has(q, seat, word)));
 }
+const theirList = (p) => p.locator('.ww-col').nth(1).locator('li');
 
 try {
   await Promise.all([a, b].map((p) => p.goto(URL)));
@@ -96,20 +100,30 @@ try {
   assert.ok((await a.evaluate(() => document.querySelector('.ww-trail polyline').getAttribute('points').split(' ').length)) > w1.length, 'the trail runs on to the finger');
   await snap(a, 'ww-04-swiping');
   await a.mouse.up();
-  await Promise.all([a, b].map((q) => until(q, (w) => wwState(G.match).found.get(w) === 'host', w1)));
-  await until(b, (w) => document.querySelectorAll('.ww-col')[1].textContent.includes(w), w1);
+  await Promise.all([a, b].map((q) => has(q, 'host', w1)));
+  await theirList(b).first().waitFor();
   assert.equal(await a.locator('.ww-sb .sb-side').first().locator('b').innerText(), '1');
-  assert.ok((await status(b)).includes(`Niramay found ${w1}`));
-  ok(`A swiped ${w1}: it scores on both phones`);
+  assert.equal(await b.locator('.ww-sb .sb-side.right b').innerText(), '1');
+  assert.equal(await status(b), 'Niramay found a word', 'the word itself isn’t given away');
+  assert.equal(await theirList(b).first().locator('i').count(), w1.length, 'one star a letter');
+  assert.ok(!(await b.locator('.ww-found').innerText()).includes(w1));
+  ok(`A swiped ${w1}: it scores on both phones, and B sees only stars`);
+  await a.locator('.ww-clue').click();
+  assert.equal(await status(a), 'Hints open once you have 3 words');
+  assert.equal(await a.locator('.ww-word .tile.clue').count(), 0);
 
-  // ---- B can't take A's word; B types one on the keyboard ----
+  // ---- B finds A's word too; again it's refused; B types one on the keyboard ----
+  await claim(b, w1);
+  assert.equal(await finds(b), 2);
   await swipe(b, w1);
-  assert.equal(await status(b), `Niramay already found ${w1}`);
-  assert.equal(await finds(b), 1);
+  assert.equal(await status(b), `You already have ${w1}`);
+  assert.equal(await finds(b), 2);
   const w2 = await fresh(b);
   await b.keyboard.type(w2.toLowerCase()); await b.keyboard.press('Enter');
-  await Promise.all([a, b].map((q) => until(q, (w) => wwState(G.match).found.get(w) === 'guest', w2)));
+  await Promise.all([a, b].map((q) => has(q, 'guest', w2)));
+  assert.equal(await theirList(a).count(), 2);
   await snap(b, 'ww-05-found');
+  await snap(a, 'ww-05-stars');
   // a small phone: the wheel still fits, with letters at least 44 px across
   await b.setViewportSize({ width: 320, height: 640 });
   await sleep(300);
@@ -117,7 +131,7 @@ try {
   assert.ok(small.l >= 44 && small.wide <= 320 && small.foundTop < 640 - 60, JSON.stringify(small));
   await snap(b, 'ww-05-small');
   await b.setViewportSize({ width: 390, height: 844 });
-  ok(`B was refused ${w1} and typed ${w2}`);
+  ok(`B found ${w1} as well, was refused it a second time, and typed ${w2}`);
 
   // ---- save, carry on: nobody can play until both are back ----
   const sheetBtn = (p, name) => p.locator('#sheet').getByRole('button', { name, exact: true }).click();
@@ -130,24 +144,65 @@ try {
   assert.equal(await status(a), 'Waiting for Saharsh to join…');
   await swipe(a, await fresh(a));
   await sleep(600);
-  assert.equal(await finds(a), 2, 'nothing is written before the partner is back');
+  assert.equal(await finds(a), 3, 'nothing is written before the partner is back');
   await sheetBtn(b, 'Carry on');
   await Promise.all([a, b].map((p) => until(p, () => /middle/.test(document.querySelector('.ww-status')?.textContent || ''))));
-  assert.equal(await b.locator('.ww-col').nth(1).locator('li').count(), 1, 'the saved finds are back');
+  assert.equal(await theirList(b).count(), 1, 'the saved finds are back');
   ok('a saved game carries on, and can’t be played until both are back');
 
-  // ---- A races to five ----
-  for (let k = 0; k < 4; k++) await claim(a, await fresh(a));
+  // ---- A gets to three, takes both hints, then races to five ----
+  for (let k = 0; k < 2; k++) await claim(a, await fresh(a));
+  const clueWord = await a.evaluate(() => wwClueWord(wwState(G.match), G.seat));
+  const clueTiles = () => a.locator('.ww-word .tile.clue').evaluateAll((els) => els.map((el) => (el.classList.contains('blank') ? '_' : el.textContent)).join(''));
+  await a.locator('.ww-clue').click();
+  assert.equal(await clueTiles(), clueWord[0] + '_'.repeat(clueWord.length - 1));
+  await a.locator('.ww-clue').click();
+  assert.equal(await clueTiles(), clueWord.slice(0, 2) + '_'.repeat(clueWord.length - 2));
+  await snap(a, 'ww-06-hint');
+  await a.locator('.ww-clue').click();
+  assert.equal(await status(a), 'No hints left this game');
+  ok(`at three words the bulb gave ${clueWord.slice(0, 2)}… (${clueWord}), two letters and no more`);
+  await claim(a, clueWord);
+  assert.equal(await a.locator('.ww-word .tile.clue').count(), 0, 'the hint goes once its word is found');
+  await claim(a, await fresh(a));
   await a.locator('#sheet .panel').waitFor({ timeout: 8000 }); await b.locator('#sheet .panel').waitFor({ timeout: 8000 });
-  assert.ok((await a.locator('#sheet').innerText()).includes('You win, 5–1!'));
-  assert.ok((await b.locator('#sheet').innerText()).includes('Niramay wins, 5–1'));
+  assert.ok((await a.locator('#sheet').innerText()).includes('You win, 5–2!'));
+  assert.ok((await b.locator('#sheet').innerText()).includes('Niramay wins, 5–2'));
   assert.ok((await a.locator('#sheet').innerText()).includes('nine-letter word was'));
   await until(a, () => G.table.results[G.matchId] && G.table.results[G.matchId].w === 'host');
-  await snap(b, 'ww-06-end');
-  await a.locator('#sheet').getByRole('button', { name: 'Back to the shelf' }).click();
-  await snap(a, 'ww-07-over');
+  // the race over, the words come out from under the stars
+  assert.equal(await theirList(a).locator('i').count(), 0);
+  assert.ok((await a.locator('.ww-col').nth(1).innerText()).includes(w2));
+  assert.equal(await theirList(b).locator('i').count(), 0);
+  assert.ok((await b.locator('.ww-col').nth(1).innerText()).includes(clueWord));
+  await snap(b, 'ww-07-end');
   for (const p of [a, b]) assert.equal(await junk(p), null);
-  ok('first to five wins on both phones, and the result is recorded');
+  ok('first to five wins on both phones, the result is recorded, and both lists are shown');
+
+  // ---- a rematch: B gives up ----
+  const first = await a.evaluate(() => G.matchId);
+  await a.locator('#sheet').getByRole('button', { name: 'Rematch' }).click();
+  await b.locator('#sheet').getByRole('button', { name: 'Join' }).click();
+  for (const p of [a, b]) { await p.locator('.howto-card').waitFor(); await p.locator('.howto-card').getByRole('button', { name: 'Got it' }).click(); }
+  await rpsRound(a, b, 'Rock', 'Scissors'); await rpsRound(a, b, 'Paper', 'Rock');
+  await a.getByRole('button', { name: 'Spin the wheel' }).click();
+  await Promise.all([a, b].map((p) => until(p, () => document.querySelector('.ww-wheel') && !/Spinning/.test(document.querySelector('.ww-status').textContent))));
+  await claim(a, await fresh(a));
+  await b.locator('.ww-give').click();
+  await b.locator('#sheet').getByRole('button', { name: 'Keep going' }).click();
+  await sleep(300);
+  assert.equal(await b.evaluate(() => wwState(G.match).winner), null, 'Keep going keeps going');
+  await b.locator('.ww-give').click();
+  await b.locator('#sheet').getByRole('button', { name: 'Give up', exact: true }).click();
+  await a.locator('#sheet .panel', { hasText: 'Saharsh gave up: you win, 1–0' }).waitFor({ timeout: 8000 });
+  await b.locator('#sheet .panel', { hasText: 'You gave up, 0–1' }).waitFor({ timeout: 8000 });
+  await until(a, (f) => G.matchId !== f && G.table.results[G.matchId] && G.table.results[G.matchId].w === 'host', first);
+  assert.equal(await b.locator('.ww-status').innerText(), 'You gave up');
+  await snap(b, 'ww-08-gave-up');
+  await a.locator('#sheet').getByRole('button', { name: 'Back to the shelf' }).click();
+  await snap(a, 'ww-09-shelf');
+  for (const p of [a, b]) assert.equal(await junk(p), null);
+  ok('B gave up the rematch: A wins on both phones, and it is recorded');
   assert.deepEqual(errors, []);
   ok('no browser errors');
 } catch (e) {
