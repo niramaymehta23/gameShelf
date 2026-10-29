@@ -330,7 +330,10 @@ try {
   check(!(await a.locator('.gbox.gw').count()), 'Guess Who? is off the shelf');
 
   check(await a.locator('.gbox').count() === 5, 'five games on the shelf');
+  check(await a.locator('.shelf-head .table-code').innerText().then((t) => t.replace(/\s/g, '')) === await state(a, 'G.code'), 'the table code sits by the names');
+  check(await a.locator('.shelf-foot .foot-btn').count() === 3, 'three small buttons at the foot of the shelf');
   await snap(a, '24-shelf-four');
+  await a.locator('.shelf-foot').scrollIntoViewIfNeeded(); await snap(a, '24-shelf-foot');
 
   console.log('Stats');
   await a.getByRole('button', { name: 'All the stats' }).click();
@@ -339,7 +342,10 @@ try {
   check(log.length === 3 && /Hues/i.test(log[0]) && /Battleships/i.test(log[1]) && /Connect Four/i.test(log[2]), 'the log lists the three finished games, newest first');
   check(/Battleships[\s\S]*Accuracy/.test(await a.locator('.stats').innerText()), 'Battleships accuracy is there');
   check(await junk(a) === null, 'no undefined/null/NaN in the stats');
+  check(await a.locator('.stats .st-pie').count() === 2 && await a.locator('.stats .st-game').count() === 3, 'pies for rock, paper, scissors and a bar per game played');
   await snap(a, '26-stats', 450);
+  await a.locator('.st-pies').scrollIntoViewIfNeeded(); await snap(a, '26-stats-pies');
+  await a.locator('.stats-sec h3', { hasText: 'Battleships' }).scrollIntoViewIfNeeded(); await snap(a, '26-stats-duels');
   await a.locator('#sheet .sheet-content').evaluate((el) => { el.scrollTop = el.scrollHeight; });
   await snap(a, '26-stats-log');
   await sheetBtn(a, 'Back to the shelf');

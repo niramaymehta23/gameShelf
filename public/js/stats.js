@@ -24,7 +24,7 @@ function tableStats(table, matches) {
 
   const s = {
     games: done.length, wins: seatsOf(() => 0), draws: 0, streak: { seat: null, n: 0 }, best: seatsOf(() => 0),
-    played: { c4: 0, bs: 0, hu: 0, qf: 0, ww: 0 }, log: [],
+    played: { c4: 0, bs: 0, hu: 0, qf: 0, ww: 0 }, split: {}, log: [],
     rps: seatsOf(() => ({ rock: 0, paper: 0, scissors: 0, throws: 0, opener: { rock: 0, paper: 0, scissors: 0 }, tosses: 0 })),
     c4: seatsOf(() => ({ wins: 0, fewest: null, discs: 0, first: 0 })),
     bs: seatsOf(() => ({ wins: 0, shots: 0, hits: 0, best: null, fewest: null, run: 0 })),
@@ -36,6 +36,8 @@ function tableStats(table, matches) {
   // wins and streaks: a draw ends the run
   for (const d of done) {
     s.played[d.g]++;
+    const split = (s.split[d.g] ||= { host: 0, guest: 0, draw: 0 });
+    split[d.w === 'host' || d.w === 'guest' ? d.w : 'draw']++;
     if (d.w === 'host' || d.w === 'guest') {
       s.wins[d.w]++;
       s.streak = s.streak.seat === d.w ? { seat: d.w, n: s.streak.n + 1 } : { seat: d.w, n: 1 };
@@ -160,7 +162,6 @@ const statsDash = '–';
 const statsPct = (x) => (x == null ? statsDash : Math.round(x * 100) + '%');
 const statsSecs = (ms) => (ms == null ? statsDash : (ms / 1000).toFixed(2) + ' s');
 const statsNum = (n) => (n == null ? statsDash : String(n));
-const statsShare = (p, k) => (p.throws ? Math.round((p[k] / p.throws) * 100) + '%' : statsDash);
 function statsFavourite(counts) {
   const top = Math.max(...STATS_HANDS.map((k) => counts[k]));
   if (!top) return statsDash;
@@ -168,57 +169,96 @@ function statsFavourite(counts) {
   return best.length > 1 ? 'no favourite' : cap(best[0]);
 }
 
+// ---------- the pictures ----------
+// Painted on the sheet's paper: you are always blue, your partner red (--chart-me, --chart-them), draws
+// grey. Every bar and slice carries its number, so nothing depends on telling colours apart.
+const STATS_ICON = '<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="14" fill="none" stroke="#c4482f" stroke-width="10" opacity=".85"/><circle cx="20" cy="20" r="14" fill="none" stroke="#2f68ad" stroke-width="10" stroke-dasharray="52 88" transform="rotate(-90 20 20)" opacity=".85"/></svg>';
+const statsWho = (x) => (x === G.seat ? 'You' : firstName(partnerName()));
+
+// Head to head: one bar split into your wins, draws and theirs, with the numbers on it.
+function statsSplit(a, b, draws = 0) {
+  const total = a + b + draws;
+  const seg = (n, cls, label) => (n ? h('span', { class: 'st-seg ' + cls, style: `flex-grow:${n}`, title: label }, String(n)) : null);
+  return h('div', { class: 'st-split', role: 'img', 'aria-label': `${statsWho(G.seat)} ${a}, ${statsWho(other(G.seat))} ${b}${draws ? `, ${draws} drawn` : ''}` },
+    total ? [seg(a, 'me', `${statsWho(G.seat)}: ${a}`), seg(draws, 'draw', `Drawn: ${draws}`), seg(b, 'them', `${statsWho(other(G.seat))}: ${b}`)] : h('span', { class: 'st-seg none' }, 'none yet'));
+}
+// One record for both of you: your bar grows left from the middle, theirs right, longest for the
+// bigger number; `better` ('hi' or 'lo') marks the leader.
+function statsDuel(label, a, b, show = statsNum, better = null) {
+  const top = Math.max(a || 0, b || 0) || 1;
+  const lead = better && a != null && b != null && a !== b ? ((better === 'hi') === (a > b) ? 'me' : 'them') : null;
+  const side = (v, who) => h('div', { class: `st-half ${who}` + (lead === who ? ' lead' : '') },
+    h('span', { class: 'st-bar', style: `width:${v ? Math.max(4, (v / top) * 100) : 0}%` }), h('b', null, show(v)));
+  return h('div', { class: 'st-duel', role: 'img', 'aria-label': `${label}: ${statsWho(G.seat)} ${show(a)}, ${statsWho(other(G.seat))} ${show(b)}` },
+    h('span', { class: 'st-label' }, label), side(a, 'me'), side(b, 'them'));
+}
+// A pie (a ring) of one player's rock, paper and scissors, with the painted hands as its key.
+function statsDonut(p, who) {
+  const r = 38, C = 2 * Math.PI * r, gap = p.throws > 1 ? 1.6 : 0;
+  let at = 0, arcs = '';
+  for (const k of STATS_HANDS) {
+    const len = p.throws ? (p[k] / p.throws) * C : 0;
+    if (len > gap) arcs += `<circle class="st-arc hand-${k}" cx="50" cy="50" r="${r}" stroke-dasharray="${len - gap} ${C - len + gap}" stroke-dashoffset="${-at}"><title>${cap(k)}: ${p[k]}</title></circle>`;
+    at += len;
+  }
+  const ring = svgEl(`<svg class="st-donut" viewBox="0 0 100 100" aria-hidden="true"><circle class="st-arc empty" cx="50" cy="50" r="${r}"/><g transform="rotate(-90 50 50)">${arcs}</g></svg>`);
+  return h('figure', { class: 'st-pie', role: 'img', 'aria-label': `${who}: ` + STATS_HANDS.map((k) => `${k} ${statsShare(p, k)}`).join(', ') },
+    h('div', { class: 'st-ring' }, ring, h('div', { class: 'st-mid' }, h('b', null, who), h('small', null, `${p.throws} ${p.throws === 1 ? 'throw' : 'throws'}`))),
+    h('figcaption', null, ...STATS_HANDS.map((k) => h('span', { class: 'st-key hand-' + k }, h('i'), h('img', { class: 'wc', src: `art/rps-${k}.png`, alt: '' }), cap(k), h('b', null, statsShare(p, k))))));
+}
+const statsShare = (p, k) => (p.throws ? Math.round((p[k] / p.throws) * 100) + '%' : statsDash);
+// The last few games as a row of dots, oldest on the left.
+function statsForm(log) {
+  const games = log.slice(0, 12).reverse();
+  return h('div', { class: 'st-form', role: 'img', 'aria-label': 'Last games, oldest first: ' + games.map((g) => (g.w === G.seat ? 'you' : g.w === other(G.seat) ? firstName(partnerName()) : 'draw')).join(', ') },
+    ...games.map((g) => h('i', { class: g.w === G.seat ? 'me' : g.w === other(G.seat) ? 'them' : 'draw', title: GAMES[g.g].name })));
+}
+
 function statsView(s) {
-  const me = G.seat, them = other(G.seat);
+  const me = G.seat, them = other(G.seat), P = firstName(partnerName());
   if (!s.games) return [h('p', { class: 'stats-foot' }, 'No finished games yet. Play one and the numbers start here.')];
-  // one ruled grid per section: label, you, them; `better` marks the leader ('hi' or 'lo'), when both have one
-  const grid = (rows) => {
-    const cells = [h('span', { class: 'hd' }), h('span', { class: 'hd n' }, firstName(myName())), h('span', { class: 'hd n' }, firstName(partnerName()))];
-    for (const [label, get, show = statsNum, better = null] of rows) {
-      const a = get(me), b = get(them);
-      const lead = better && a != null && b != null && a !== b ? ((better === 'hi') === (a > b) ? 'me' : 'them') : null;
-      cells.push(h('span', null, label),
-        h('span', { class: 'n' + (lead === 'me' ? ' lead' : '') }, show(a)),
-        h('span', { class: 'n' + (lead === 'them' ? ' lead' : '') }, show(b)));
-    }
-    return h('div', { class: 'score-grid stats-grid' }, ...cells);
-  };
   const section = (title, ...kids) => h('section', { class: 'stats-sec' }, h('h3', null, title), ...kids);
-  const out = [];
+  const duels = (rows) => h('div', { class: 'st-duels' }, ...rows.map(([label, get, show, better]) => statsDuel(label, get(me), get(them), show, better)));
+  const key = h('div', { class: 'st-legend' }, h('span', { class: 'me' }, h('i'), 'You'), h('span', { class: 'them' }, h('i'), P));
+  const out = [key];
 
-  const run = s.streak.seat && s.streak.n > 1 ? `${s.streak.seat === me ? 'You’re' : `${firstName(partnerName())}’s`} on a roll: ${s.streak.n} wins in a row.` : null;
+  // overall: the head-to-head, the run of recent results, and the games one by one
+  const run = s.streak.seat && s.streak.n > 1 ? `${s.streak.seat === me ? 'You’re' : `${P}’s`} on a roll: ${s.streak.n} wins in a row.` : '';
+  const perGame = Object.keys(GAMES).filter((g) => s.split[g]).map((g) =>
+    h('div', { class: 'st-game' }, h('span', null, GAMES[g].name), statsSplit(s.split[g][me], s.split[g][them], s.split[g].draw)));
   out.push(section('Overall',
-    grid([['Games won', (x) => s.wins[x], statsNum, 'hi'], ['Longest winning run', (x) => s.best[x], statsNum, 'hi']]),
-    h('p', { class: 'stats-foot' }, `${s.games} ${s.games === 1 ? 'game' : 'games'} finished${s.draws ? `, ${s.draws} drawn` : ''}. ${run || ''}`.trim())));
+    h('div', { class: 'st-hero' }, h('div', { class: 'me' }, h('b', null, s.wins[me]), h('small', null, 'your wins')), h('div', { class: 'them' }, h('b', null, s.wins[them]), h('small', null, `${P}’s wins`))),
+    statsSplit(s.wins[me], s.wins[them], s.draws),
+    h('p', { class: 'stats-foot' }, `${s.games} ${s.games === 1 ? 'game' : 'games'} finished${s.draws ? `, ${s.draws} drawn` : ''}. ${run}`.trim()),
+    h('h4', null, 'Lately'), statsForm(s.log),
+    h('h4', null, 'Game by game'), ...perGame,
+    duels([['Longest winning run', (x) => s.best[x], statsNum, 'hi']])));
 
-  out.push(section('Rock, paper, scissors', grid([
-    ['Rock', (x) => s.rps[x], (p) => statsShare(p, 'rock')],
-    ['Paper', (x) => s.rps[x], (p) => statsShare(p, 'paper')],
-    ['Scissors', (x) => s.rps[x], (p) => statsShare(p, 'scissors')],
-    ['Opens with', (x) => s.rps[x].opener, statsFavourite],
-    ['Won the toss', (x) => s.rps[x].tosses, statsNum, 'hi'],
-  ])));
+  out.push(section('Rock, paper, scissors',
+    h('div', { class: 'st-pies' }, statsDonut(s.rps[me], 'You'), statsDonut(s.rps[them], P)),
+    h('p', { class: 'stats-foot' }, `Opens with: you, ${statsFavourite(s.rps[me].opener).toLowerCase()}; ${P}, ${statsFavourite(s.rps[them].opener).toLowerCase()}.`),
+    duels([['Won the toss', (x) => s.rps[x].tosses, statsNum, 'hi']])));
 
-  if (s.played.c4) out.push(section('Connect Four', grid([
+  if (s.played.c4) out.push(section('Connect Four', duels([
     ['Wins', (x) => s.c4[x].wins, statsNum, 'hi'],
     ['Fewest discs to win', (x) => s.c4[x].fewest, statsNum, 'lo'],
     ['Discs per win', (x) => (s.c4[x].wins ? Math.round((s.c4[x].discs / s.c4[x].wins) * 10) / 10 : null), statsNum, 'lo'],
     ['Wins going first', (x) => s.c4[x].first, statsNum],
   ])));
-  if (s.played.bs) out.push(section('Battleships', grid([
+  if (s.played.bs) out.push(section('Battleships', duels([
     ['Wins', (x) => s.bs[x].wins, statsNum, 'hi'],
     ['Accuracy', (x) => (s.bs[x].shots ? s.bs[x].hits / s.bs[x].shots : null), statsPct, 'hi'],
     ['Best game', (x) => s.bs[x].best, statsPct, 'hi'],
     ['Fewest shots to win', (x) => s.bs[x].fewest, statsNum, 'lo'],
     ['Most hits in a row', (x) => s.bs[x].run, statsNum, 'hi'],
   ])));
-  if (s.played.hu) out.push(section('Hues', grid([
+  if (s.played.hu) out.push(section('Hues', duels([
     ['Wins', (x) => s.hu[x].wins, statsNum, 'hi'],
     ['Fewest cards to win', (x) => s.hu[x].fewest, statsNum, 'lo'],
     ['Biggest pickup', (x) => s.hu[x].pickup, statsNum],
     ['Call-outs', (x) => s.hu[x].callouts, statsNum, 'hi'],
   ])));
-  if (s.played.qf) out.push(section('Quickfire', grid([
+  if (s.played.qf) out.push(section('Quickfire', duels([
     ['Wins', (x) => s.qf[x].wins, statsNum, 'hi'],
     ['Rounds won', (x) => s.qf[x].rounds, statsNum, 'hi'],
     ['Fastest word', (x) => s.qf[x].word && s.qf[x].word.ms, statsSecs, 'lo'],
@@ -227,25 +267,25 @@ function statsView(s) {
     ['Gave up', (x) => s.qf[x].gaveUp, statsNum],
   ]), ...['word', 'sum'].map((k) => {
     // the quickest of the two, with what it was
-    const f = [me, them].filter((x) => s.qf[x][k]).map((x) => ({ who: x === me ? 'you' : firstName(partnerName()), ...s.qf[x][k] })).sort((a, b) => a.ms - b.ms)[0];
+    const f = [me, them].filter((x) => s.qf[x][k]).map((x) => ({ who: x === me ? 'you' : P, ...s.qf[x][k] })).sort((a, b) => a.ms - b.ms)[0];
     if (!f) return '';
     const what = k === 'word' ? f.w : `${f.x} ${QF_OPS[f.op].sym} ${f.y}`;
     return h('p', { class: 'stats-foot' }, `Quickest ${k}: ${what}, by ${f.who} in ${statsSecs(f.ms)}.`);
   })));
   if (s.played.ww) {
     const best = [me, them].filter((x) => s.ww[x].longest).sort((x, y) => s.ww[y].longest.w.length - s.ww[x].longest.w.length)[0];
-    out.push(section('Word Wheel', grid([
+    out.push(section('Word Wheel', duels([
       ['Wins', (x) => s.ww[x].wins, statsNum, 'hi'],
       ['Words found', (x) => s.ww[x].words, statsNum, 'hi'],
       ['Longest word', (x) => s.ww[x].longest && s.ww[x].longest.w.length, statsNum, 'hi'],
       ['Nine-letter words', (x) => s.ww[x].nines, statsNum, 'hi'],
-    ]), best ? h('p', { class: 'stats-foot' }, `Longest word: ${s.ww[best].longest.w}, by ${best === me ? 'you' : firstName(partnerName())}.`) : ''));
+    ]), best ? h('p', { class: 'stats-foot' }, `Longest word: ${s.ww[best].longest.w}, by ${best === me ? 'you' : P}.`) : ''));
   }
 
   const day = (at) => (at ? new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '');
-  out.push(section('The log', h('ol', { class: 'stats-log' }, ...s.log.map((g) => h('li', null,
+  out.push(section('The log', h('ol', { class: 'stats-log' }, ...s.log.map((g) => h('li', { class: g.w === me ? 'me' : g.w === them ? 'them' : 'draw' },
     h('small', null, [day(g.at), GAMES[g.g].name].filter(Boolean).join(' · ')),
-    h('b', null, g.w === me ? 'You won' : g.w === them ? `${firstName(partnerName())} won` : 'A draw'),
+    h('b', null, g.w === me ? 'You won' : g.w === them ? `${P} won` : 'A draw'),
     g.note ? h('span', null, g.note) : '')))));
   return out;
 }

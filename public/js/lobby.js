@@ -312,9 +312,14 @@ Screens.shelf = () => {
     mount(e) {
       el = e;
       names = h('span', { class: 'script' });
+      // who's at the table and its code on the left, the stats pinned up on the right
+      const code = h('span', { class: 'table-code', 'aria-label': 'Table code ' + G.code.split('').join(' ') }, ...G.code.split('').map(codeTile));
       el.append(h('div', { class: 'shelf-head' },
-        names,
-        h('h1', { class: 'display h2', style: 'margin:0' }, 'Pick a game'),
+        h('div', { class: 'shelf-title' },
+          h('div', { class: 'shelf-names' }, names, code),
+          h('h1', { class: 'display h2', style: 'margin:0' }, 'Pick a game')),
+        h('button', { class: 'paper stats-btn', onclick: showStats },
+          h('span', { class: 'tape' }), svgEl(STATS_ICON), h('span', null, 'All the stats')),
       ));
       const cubby = h('div', { class: 'cubby', role: 'region', 'aria-label': 'Games · scroll to browse', tabindex: '0' });
       for (const key of Object.keys(GAMES)) {
@@ -331,22 +336,20 @@ Screens.shelf = () => {
       const lower = h('div', { class: 'dresser-lower' },
         h('div', { class: 'paper score-sheet' },
           h('div', { class: 'tape', style: 'top:-10px;left:40%;width:70px;transform:rotate(-3deg)' }),
-          h('h3', null, 'The score'), sheet,
-          h('button', { class: 'stats-link', onclick: showStats }, 'All the stats')),
+          h('h3', null, 'The score'), sheet),
         h('img', { class: 'wc sprig', src: 'art/sprig-a.png', alt: '' }));
       const dresser = h('div', { class: 'dresser sage-wood' },
         h('div', { class: 'cornice sage-wood' }), cubby, h('div', { class: 'shelf-board sage-wood' }), lower);
       note = h('p', { class: 'hand-note shelf-note' });
       el.append(dresser, note,
         h('div', { class: 'shelf-foot' },
-          h('div', { class: 'table-code' }, 'Table code ', h('b', null, G.code)),
-          h('button', { class: 'btn btn-ghost', onclick: showTableHistory }, 'Recent tables'),
-          h('button', { class: 'btn btn-ghost', onclick: () => { Sound.tap(); showRename(); } }, 'Change my name'),
-          h('button', { class: 'btn btn-ghost', onclick: () => openSheet({
+          h('button', { class: 'btn btn-ghost foot-btn', onclick: showTableHistory }, h('i', { html: ICON.history }), 'Recent tables'),
+          h('button', { class: 'btn btn-ghost foot-btn', onclick: () => { Sound.tap(); showRename(); } }, h('i', { html: ICON.pencil }), 'Change my name'),
+          h('button', { class: 'btn btn-ghost foot-btn', onclick: () => openSheet({
             title: 'Get up from the table?',
             body: `You can come back any time with code ${G.code}.`,
             actions: [{ label: 'Leave the table', kind: 'ink', onClick: () => { closeTable(); route(); } }, { label: 'Stay', kind: 'ghost' }],
-          }) }, 'Leave the table'),
+          }) }, h('i', { html: ICON.leave }), 'Leave the table'),
         ));
     },
     update() { names.textContent = `${myName()} & ${partnerName()}’s`; paintScore(); paintNote(); paintSaved(); },

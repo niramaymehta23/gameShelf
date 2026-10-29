@@ -33,6 +33,13 @@ test('streaks: current run and best run per player; a draw ends a run', () => {
   assert.deepEqual({ ...s.streak }, { seat: null, n: 0 }); assert.equal(s.draws, 1);
 });
 
+test('wins per game, with draws, for the head-to-head bars', () => {
+  const g = [['a', 'host'], ['b', 'guest'], ['c', 'host']].map(([id, w], i) => [c4(id, i + 1, w), w]);
+  const s = stats([...g, [{ ...c4('d', 9, 'host'), moves: {} }, 'draw']]);
+  assert.deepEqual({ ...s.split.c4 }, { host: 2, guest: 1, draw: 1 });
+  assert.equal(s.split.bs, undefined, 'games nobody has finished have no bar');
+});
+
 test('a saved game that finished last counts last, whenever it was opened', () => {
   const saved = c4('old', 1, 'host'), quick = c4('new', 2, 'guest');
   const s = S.tableStats({ results: { old: { g: 'c4', w: 'host', at: 50 }, new: { g: 'c4', w: 'guest', at: 20 } } }, [saved, quick]);

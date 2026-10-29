@@ -55,8 +55,9 @@ The dot under your partner's name tells you where they are: **green** on the sam
   If one of you quits, the other decides whether to keep it saved. A saved game shows a sticker on
   its box, and picking it again carries on where you left off.
 - **The score.** A score sheet on the dresser counts wins per game for the two of you.
-- **All the stats.** Under the score: wins and winning runs, your rock, paper, scissors habits, each
-  game's records (fewest discs to win, Battleships accuracy, fewest cards to win in Hues, the fastest
+- **All the stats.** The little card pinned up beside *Pick a game*: drawn as charts, the head-to-head
+  and each game's wins, your recent results, pies of your rock, paper, scissors habits, each
+  game's records side by side (fewest discs to win, Battleships accuracy, fewest cards to win in Hues, the fastest
   Quickfire word, the longest Word Wheel word) and a log of recent games. Worked out from the games' saved moves, so older games
   count too.
 - **Change your name.** On the shelf, or by joining the table again with the code under a new name.
