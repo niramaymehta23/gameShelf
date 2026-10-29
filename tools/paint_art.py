@@ -25,7 +25,6 @@ def save_rgb(a, name, q=84):
 
 def save_rgba(a, name):
     img = Image.fromarray(np.clip(a, 0, 255).astype(np.uint8), 'RGBA')
-    img = img.quantize(colors=256, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.NONE) if False else img
     img.save(os.path.join(OUT, name), optimize=True)
     print(name, os.path.getsize(os.path.join(OUT, name)) // 1024, 'KB')
 
