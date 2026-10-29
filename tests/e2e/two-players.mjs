@@ -18,14 +18,6 @@ const gotIt = (p) => p.locator('.howto-card').getByRole('button', { name: 'Got i
 // the end-of-game card is up on this phone
 const endCard = (p, text) => p.locator('#sheet .panel', { hasText: text }).waitFor({ timeout: 10000 });
 
-async function waitTurn(p, timeout = 15000) {
-  await p.waitForFunction(() => {
-    if (!G.match) return false;
-    if (G.match.game === 'c4') { const s = c4State(G.match); return s.turn === G.seat; }
-    const s = bsState(G.match); return s.turn === G.seat && !document.querySelector('.bs-bottom .btn')?.disabled === false;
-  }, null, { timeout });
-}
-
 async function drop(p, col) {
   await p.waitForFunction(() => G.match && c4State(G.match).turn === G.seat, null, { timeout: 15000 });
   await sleep(150);
@@ -376,7 +368,7 @@ try {
   failures++;
   console.error('\n' + e.stack);
   for (const [n, p] of [['A', a], ['B', b]]) {
-    const d = await p.evaluate(() => JSON.stringify({ seat: G.seat, online: Net.online, subs: [...Net.subs.keys()], moves: G.match && G.match.moves, rps:G.match?.rps, game:G.match?.game, screen: cur.name, turn: G.match && G.match.game === 'c4' ? c4State(G.match).turn : null })).catch((x) => String(x));
+    const d = await p.evaluate(() => JSON.stringify({ seat: G.seat, online: Net.online, moves: G.match && G.match.moves, rps:G.match?.rps, game:G.match?.game, screen: cur.name, turn: G.match && G.match.game === 'c4' ? c4State(G.match).turn : null })).catch((x) => String(x));
     console.error(n, d);
   }
   await snap(a, 'ERR-a').catch(() => {}); await snap(b, 'ERR-b').catch(() => {});
