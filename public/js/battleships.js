@@ -391,8 +391,8 @@ function makeBattle(box) {
   const track = h('div', { style: `display:flex;width:${W * 2}px;transition:transform .45s var(--ease-out)` }, T.wrap, Hm.wrap);
   const seas = h('div', { style: `width:${W}px;max-width:100%;overflow-x:clip;position:relative;flex:none` }, track);
   const myRet = T.reticle(); const theirRet = Hm.reticle('partner');
-  const btnT = h('button', null, `${firstName(P)}’s waters`, h('i', { class: 'badge' }));
-  const btnH = h('button', null, 'Your fleet', h('i', { class: 'badge' }));
+  const btnT = h('button', null, `${firstName(P)}’s waters`);
+  const btnH = h('button', null, 'Your fleet');
   btnT.addEventListener('click', () => { manual = true; setView('target'); Sound.tap(); });
   btnH.addEventListener('click', () => { manual = true; setView('home'); Sound.tap(); });
   const seg = h('div', { class: 'seg', role: 'tablist' }, btnT, btnH);
@@ -410,7 +410,6 @@ function makeBattle(box) {
     view = v;
     track.style.transform = v === 'home' ? `translateX(-${W}px)` : 'none';
     btnT.classList.toggle('on', v === 'target'); btnH.classList.toggle('on', v === 'home');
-    (v === 'target' ? btnT : btnH).classList.remove('alert');
     paintTrack();
   }
   function shownShots() { return st.shots.slice(0, Math.max(0, rendered)); }

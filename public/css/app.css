@@ -22,7 +22,6 @@
   /* Hues suits */
   --lavender: #8f7cc0;
   --orange: #df7432;
-  --royal: #2c4a8c;
   --sea-ink: rgba(24, 44, 72, .6);
   --good: #5f9d6e;
 
@@ -132,7 +131,6 @@ img { -webkit-user-drag: none; }
 .script { font-family: var(--hand); }
 .muted { color: var(--cream-dim); }
 .eyebrow { text-transform: uppercase; letter-spacing: .16em; font-size: 12px; font-weight: 800; color: var(--poppy); }
-.on-cloth { color: var(--cream); text-shadow: var(--cloth-shadow); }
 .hand-note { font-family: var(--hand); font-size: 23px; line-height: 1.15; color: var(--cream); text-align: center; text-shadow: var(--cloth-shadow); margin: 0; text-wrap: balance; }
 
 /* ---------- buttons (painted, with paper grain) ---------- */
@@ -271,7 +269,6 @@ img { -webkit-user-drag: none; }
 .gbox .lbl { display: grid; place-items: center; min-height: 44px; font-family: var(--display); font-size: clamp(12px, 3.2vw, 16px); line-height: 1.15; color: var(--ink); padding: 7px 2px 8px; text-align: center; overflow-wrap: anywhere; }
 .gbox:active { transform: translateY(-6px) rotate(-1.5deg); }
 .gbox.pulled { transform: translateY(-12px) scale(1.04) rotate(-1deg); }
-.gbox.soon img { filter: saturate(.55); }
 .gbox .sticker.saved { background: var(--sage); }
 .gbox .sticker { position: absolute; top: 8px; right: -4px; padding: 3px 10px 3px 12px; font: 800 10px var(--body); letter-spacing: .14em; text-transform: uppercase; color: #fbf3e6; background: var(--poppy); clip-path: polygon(8px 0, 100% 0, 100% 100%, 8px 100%, 0 50%); transform: rotate(8deg); }
 .dresser-lower { position: relative; padding: 16px 14px 0; }
@@ -323,7 +320,6 @@ img { -webkit-user-drag: none; }
 .sheet-sub { font-family: var(--hand); font-weight: 700; font-size: 28px; line-height: 1; color: var(--poppy); margin-top: -6px; }
 .sheet-body { color: var(--ink-soft); font-weight: 600; font-size: 16px; }
 .sheet-body ul { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
-.sheet-art { display: flex; justify-content: center; gap: 4px; margin-bottom: -4px; }
 
 /* ---------- chat ---------- */
 #chatBtn { position: relative; }
@@ -551,8 +547,6 @@ img { -webkit-user-drag: none; }
   display: flex; align-items: center; gap: 6px;
 }
 .seg button.on { background-color: var(--paper); color: var(--ink); height: 44px; margin-top: 0; }
-.seg .badge { width: 8px; height: 8px; border-radius: 50%; background: var(--poppy); display: none; }
-.seg button.alert .badge { display: block; }
 .grid-wrap {
   position: relative; touch-action: none;
   background-color: var(--paper); background-image: var(--t-paper); background-size: 380px;
@@ -567,7 +561,6 @@ img { -webkit-user-drag: none; }
   overflow: hidden;
 }
 .bs-grid .cell { position: relative; border-right: 1px solid rgba(24, 44, 72, .26); border-bottom: 1px solid rgba(24, 44, 72, .26); }
-.bs-grid .cell.aim { background: rgba(226, 168, 60, .3); }
 .axis { position: absolute; display: grid; font-weight: 800; font-size: 11px; color: var(--ink-mute); font-variant-numeric: tabular-nums; }
 .axis span { display: grid; place-items: center; }
 .ship {
@@ -653,7 +646,6 @@ img { -webkit-user-drag: none; }
 .tool[disabled] { opacity: .5; pointer-events: none; }
 .tool svg { width: 18px; height: 18px; }
 .bs-bottom { width: 100%; margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
-.seas { position: relative; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
