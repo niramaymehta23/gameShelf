@@ -18,6 +18,21 @@ function tableHistoryList() {
   };
   draw(); return list;
 }
+function showRename() {
+  const now = myName();
+  const input = h('input', { id: 'renameInput', type: 'text', maxlength: '16', placeholder: 'your name', autocomplete: 'nickname', autocapitalize: 'words', enterkeyhint: 'done', value: now });
+  const save = h('button', { class: 'btn btn-primary', type: 'submit', disabled: true }, 'Save');
+  const name = () => input.value.trim();
+  input.addEventListener('input', () => { save.disabled = !name() || name() === now; });
+  const form = h('form', { class: 'rename-form', onsubmit: async (e) => {
+    e.preventDefault();
+    if (save.disabled) return;
+    const n = name(); save.disabled = true; closeSheet();
+    if (await renameSeat(n)) toast(`You’re ${n} at this table now`);
+  } }, h('label', { class: 'name-tag', for: 'renameInput' }, h('span', null, 'Hello, my name is'), input), save);
+  openSheet({ title: 'Change your name', sub: `${partnerName()} will see the new one`, body: form, actions: [{ label: 'Keep it', kind: 'ghost' }] });
+  setTimeout(() => { input.focus(); input.select(); }, 60);
+}
 function showTableHistory() {
   openSheet({ title: 'Your recent tables', body: tableHistoryList(), sub: 'Saved on this device', actions: [{ label: 'Back', kind: 'ghost' }] });
 }
@@ -246,7 +261,7 @@ const GAMES = {
     howTo: [
       { t: 'Who sets it up', d: 'Rock, paper, scissors, best of three. The winner picks Mixed (first to 10), Words or Sums (first to 5), the word length, first or last letter, and add, subtract or multiply. That stays for the whole game.', art: 'art/rps-rock.png' },
       { t: 'Words', d: 'You each pick a letter in secret: the winner’s goes on their end of the word, yours on the other. Then S _ _ _ T appears. Type the middle letters of any real word.' },
-      { t: 'Sums', d: 'You each pick a number in secret (1–100, or 0–30 to multiply). Then 67 − 24 = ? appears, always bigger minus smaller. Type the answer on the keypad and tap =. A wrong answer locks the keypad for a moment.' },
+      { t: 'Sums', d: 'You each pick a number in secret (1–100, or 0–30 to multiply). Then 67 − 24 = ? appears, always bigger minus smaller. Type the answer on the keypad: it goes as soon as it has enough digits. Wrong? It clears, so try again straight away.' },
       { t: 'Fair timing', d: 'Each phone times you from the moment the puzzle appears on your screen, so a slow connection doesn’t cost you. The quickest right answer takes the round.' },
       { t: 'Stuck?', d: 'Give up, and your partner can take their time. If you both give up, nobody scores. Letters no everyday word fits are dealt again.' },
     ],
@@ -279,16 +294,16 @@ function makeHowTo(box, ctx, game) {
 }
 
 Screens.shelf = () => {
-  let el, note, sheet;
+  let el, note, sheet, names;
   const boxes = {};
   const savedId = (key) => (G.table && G.table.saved && G.table.saved[key]) || null;
   const S = {
     cls: 'shelf-screen',
     mount(e) {
       el = e;
-      const P = partnerName();
+      names = h('span', { class: 'script' });
       el.append(h('div', { class: 'shelf-head' },
-        h('span', { class: 'script' }, `${myName()} & ${P}’s`),
+        names,
         h('h1', { class: 'display h2', style: 'margin:0' }, 'Pick a game'),
       ));
       const cubby = h('div', { class: 'cubby', role: 'region', 'aria-label': 'Games · scroll to browse', tabindex: '0' });
@@ -306,7 +321,8 @@ Screens.shelf = () => {
       const lower = h('div', { class: 'dresser-lower' },
         h('div', { class: 'paper score-sheet' },
           h('div', { class: 'tape', style: 'top:-10px;left:40%;width:70px;transform:rotate(-3deg)' }),
-          h('h3', null, 'The score'), sheet),
+          h('h3', null, 'The score'), sheet,
+          h('button', { class: 'stats-link', onclick: showStats }, 'All the stats')),
         h('img', { class: 'wc sprig', src: 'art/sprig-a.png', alt: '' }));
       const dresser = h('div', { class: 'dresser sage-wood' },
         h('div', { class: 'cornice sage-wood' }), cubby, h('div', { class: 'shelf-board sage-wood' }), lower);
@@ -315,6 +331,7 @@ Screens.shelf = () => {
         h('div', { class: 'shelf-foot' },
           h('div', { class: 'table-code' }, 'Table code ', h('b', null, G.code)),
           h('button', { class: 'btn btn-ghost', onclick: showTableHistory }, 'Recent tables'),
+          h('button', { class: 'btn btn-ghost', onclick: () => { Sound.tap(); showRename(); } }, 'Change my name'),
           h('button', { class: 'btn btn-ghost', onclick: () => openSheet({
             title: 'Get up from the table?',
             body: `You can come back any time with code ${G.code}.`,
@@ -322,7 +339,7 @@ Screens.shelf = () => {
           }) }, 'Leave the table'),
         ));
     },
-    update() { paintScore(); paintNote(); paintSaved(); },
+    update() { names.textContent = `${myName()} & ${partnerName()}’s`; paintScore(); paintNote(); paintSaved(); },
     onPeers() { paintNote(); },
   };
   function paintScore() {

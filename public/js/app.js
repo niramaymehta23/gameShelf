@@ -104,6 +104,7 @@ function onTableSnap(s) {
   if (G.seat && prev) {
     const p = other(G.seat);
     if (!prev[p] && G.table[p]) { toast(`${G.table[p].name} sat down at the table`); Sound.ding(); }
+    else if (prev[p] && G.table[p] && prev[p].dev === G.table[p].dev && prev[p].name !== G.table[p].name) toast(`${prev[p].name} is now ${G.table[p].name}`);
     const fresh = G.table.notice && (!prev.notice || prev.notice.id !== G.table.notice.id);
     if (prev.current && !G.table.current && !G.leftByMe && !fresh) toast(`${partnerName()} went back to the shelf`);
   }
@@ -124,7 +125,17 @@ function resolveSeat() {
       write(tablePath(), { guest: { dev: G.dev, name: G.name || 'Player 2' } });
     }
   }
+  // sitting back down with the code under a different name renames your seat (once per join)
+  if (G.seat && G.joining) {
+    G.joining = false;
+    if (G.name && t[G.seat].name !== G.name) renameSeat(G.name);
+  }
   if (G.seat) Live.set({ seat: G.seat });
+}
+// Only the name changes: the seat stays this device's (the dev field isn't touched).
+async function renameSeat(name) {
+  G.name = name; Pref.set('name', name);
+  return write(tablePath(), { [G.seat]: { name } });
 }
 function watchMatch(id) {
   if (G.unsubMatch) G.unsubMatch();
@@ -251,7 +262,8 @@ async function backToShelf() {
 function recordResult(m, w) {
   if (!G.table || (G.table.results && G.table.results[m.id])) return;
   const finishedSaved = G.table.saved && G.table.saved[m.game] === m.id;
-  write(tablePath(), { results: { [m.id]: { g: m.game, w } }, ...(finishedSaved ? { saved: { [m.game]: null } } : {}) });
+  // at: when it finished (a saved game can finish days after it was opened), for the stats' order
+  write(tablePath(), { results: { [m.id]: { g: m.game, w, at: Date.now() } }, ...(finishedSaved ? { saved: { [m.game]: null } } : {}) });
 }
 
 // ---------- toast + sheet ----------

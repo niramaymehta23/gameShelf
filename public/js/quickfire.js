@@ -10,8 +10,10 @@
 // need to agree. The quickest right answer wins. When one phone sees the other's right answer at
 // t ms, it keeps its own player racing until its own clock passes t, then writes {out, ms}; only
 // then is the round settled, so it can't be decided before both phones have had the same time.
-// {pass, ms} gives up (after QF_LIMIT on your own clock it's sent for you). Wrong answers are
-// refused on the phone and never written. qfState(m) replays it all; nothing derived is stored.
+// {pass, ms} gives up (after QF_LIMIT on your own clock it's sent for you). An answer goes as soon as
+// it's long enough (the word's middle letters, or as many digits as the sum's answer); a wrong one is
+// refused on the phone, never written, and cleared so you can go again at once. qfState(m) replays
+// it all; nothing derived is stored.
 
 const QF_MODES = {
   mix: { name: 'Mixed', to: 10, note: 'Words and Sums, first to 10' },
@@ -24,7 +26,6 @@ const QF_OPS = {
   mul: { sym: '×', name: 'Multiply', lo: 0, hi: 30 },
 };
 const QF_LIMIT = { w: 60000, s: 30000 }; // on your own clock, then the round is given up for you
-const QF_WRONG_MS = 900;                  // a wrong sum locks the keypad this long (no guessing sprees)
 
 // ---------- dictionary (public/js/words.js, built by tools/make_words.py) ----------
 let qfIndex = null;
@@ -192,8 +193,8 @@ function makeQF(box, ctx) {
   let cur = null;          // key of the round on screen
   let clock = null;        // {key, t}: Date.now() when the puzzle first appeared on this phone
   let typed = '';          // the Sums keypad's number
-  let lockUntil = 0, flash = '', flashTimer = null, tick = null;
-  const sent = new Set();  // answers and picks already on their way, by key
+  let flash = '', flashTimer = null, tick = null;
+  const sent = new Map();  // round key → the answer this phone sent ({w}, {n}, {pass} or {out})
   const localPick = {};
 
   const scoreMe = h('b', null, '0'), scoreThem = h('b', null, '0'), sbMid = h('div', { class: 'sb-mid' });
@@ -232,8 +233,14 @@ function makeQF(box, ctx) {
   const say = (text) => { status.replaceChildren(...(Array.isArray(text) ? text : [text])); };
   function note(text, ms = 1600) { flash = text; clearTimeout(flashTimer); flashTimer = setTimeout(() => { flash = ''; paint(); }, ms); paint(); }
   const wordsUp = () => document.activeElement === input;
-  function btn(label, kind, fn) {
-    const b = h('button', { class: 'btn ' + kind }, label);
+  // what this phone answered this round (sent, or already back from the server), or null
+  const myAnswer = (r) => r.ans[seat] || sent.get(r.key) || null;
+  function answeredLine(r) {
+    const a = myAnswer(r);
+    return a.pass ? `You gave up. ${P} can take their time` : a.out ? `${P} was quicker…` : `Got it! Checking with ${P}’s phone…`;
+  }
+  function btn(label, kind, fn, disabled = false) {
+    const b = h('button', { class: 'btn ' + kind, disabled }, label);
     b.addEventListener('mousedown', (e) => e.preventDefault()); // don't take the focus (and keyboard) from the tiles
     b.addEventListener('click', () => { fn(); if (round() && round().type === 'w') input.focus({ preventScroll: true }); });
     return b;
@@ -252,7 +259,7 @@ function makeQF(box, ctx) {
 
   async function send(r, a) {
     if (sent.has(r.key)) return;
-    sent.add(r.key);
+    sent.set(r.key, a);
     const ms = Math.round(elapsed() * 10) / 10;
     const ok = await write(matchPath(m.id), { ans: { [r.key + me]: { ...a, ms } } });
     if (!ok) sent.delete(r.key);
@@ -307,33 +314,36 @@ function makeQF(box, ctx) {
   input.addEventListener('blur', () => { paint(); });
   function tryWord(r, w) {
     if (r.ans[seat] || sent.has(r.key)) return;
-    if (!qfLegal(w)) { Sound.lose(); vibrate(20); shake(stage, 7); note(`${w} isn’t in our dictionary`, 1800); return; }
+    if (!qfLegal(w)) { Sound.lose(); vibrate(20); shake(stage, 7); input.value = ''; note(`${w} isn’t in our dictionary`, 1800); return; }
     Sound.ding(); send(r, { w });
   }
   // ---- the Sums keypad (and a real keyboard's digits) ----
   function press(k) {
     const r = round();
     if (!r || r.type !== 's' || (r.phase === 'pick' && (r.picks[seat] != null || localPick[r.key] != null)) || (r.phase === 'race' && (r.ans[seat] || sent.has(r.key)))) return;
-    if (Date.now() < lockUntil) { shake(pad, 7); return; }
-    const max = r.phase === 'pick' ? 3 : 4;
+    // a pick takes up to three digits and Lock in; an answer goes by itself at the answer's length
+    const max = r.phase === 'pick' ? 3 : String(r.answer).length;
     if (k === 'del') typed = typed.slice(0, -1);
     else if (k === 'ok') return enter(r);
     else if (typed.length < max) typed = (typed === '0' ? '' : typed) + k;
-    Sound.tap(); paint();
+    Sound.tap();
+    if (r.phase === 'race' && typed.length === max) return enter(r);
+    paint();
   }
   function enter(r) {
-    if (!typed) { shake(pad, 7); return; }
+    if (!typed) return; // the key is disabled with nothing typed
     const n = +typed, op = QF_OPS[st.setup.op];
     if (r.phase === 'pick') {
       if (n < op.lo || n > op.hi) { shake(pad, 7); note(`Pick from ${op.lo} to ${op.hi}`); typed = ''; paint(); return; }
       pickIt(r, n); return;
     }
     if (n === r.answer) { Sound.ding(); send(r, { n }); return; }
-    Sound.lose(); vibrate(20); shake(stage, 7); lockUntil = Date.now() + QF_WRONG_MS;
-    note(`Not ${n}`, QF_WRONG_MS); typed = ''; paint();
+    Sound.lose(); vibrate(20); shake(stage, 7);
+    typed = ''; note(`Not ${n}. Go again`);
   }
   const onKey = (e) => {
-    const r = round(); if (!r || r.type !== 's' || e.target === input) return;
+    // a real keyboard's digits drive the keypad, but not while typing somewhere else (a chat note)
+    const r = round(); if (!r || r.type !== 's' || e.target.closest?.('input, textarea, [contenteditable]')) return;
     if (/^[0-9]$/.test(e.key)) press(e.key); else if (e.key === 'Backspace') press('del'); else if (e.key === 'Enter') press('ok'); else return;
     e.preventDefault();
   };
@@ -362,7 +372,7 @@ function makeQF(box, ctx) {
       eyebrow.textContent = `Words · ${L} letters`;
       clockEl.textContent = '';
       say(my ? (theirs ? '' : `Waiting for ${P}’s letter…`) : [`Type your ${mine === 'start' ? 'first' : 'last'} letter`, theirs ? h('small', null, ` · ${P} has picked`) : '']);
-      actions.replaceChildren(...(my ? [] : [btn('Lock in my letter', 'btn-primary', lockLetter)]));
+      actions.replaceChildren(...(my ? [] : [btn('Lock in my letter', 'btn-primary', lockLetter, !input.value)]));
       return;
     }
     const v = input.value, done = r.ans[seat] || sent.has(r.key);
@@ -371,7 +381,7 @@ function makeQF(box, ctx) {
     t.push(tile(r.last, 'fixed'));
     stage.replaceChildren(rack(r, t));
     eyebrow.textContent = `Words · ${r.first} to ${r.last}`;
-    say(flash || (done ? 'Got it! Checking with ' + P + '’s phone…' : 'Go! Type the middle letters'));
+    say(flash || (done ? answeredLine(r) : 'Go! Type the middle letters'));
     actions.replaceChildren(...(done ? [] : [btn('Give up', 'btn-ghost', () => send(r, { pass: true }))]));
   }
   function paintSums(r) {
@@ -386,16 +396,19 @@ function makeQF(box, ctx) {
       clockEl.textContent = '';
       say(flash || (my != null ? (theirs ? '' : `Waiting for ${P}’s number…`) : [`Pick a number, ${op.lo} to ${op.hi}`, theirs ? h('small', null, ` · ${P} has picked`) : '']));
       padKeys.ok.textContent = 'Lock in';
+      padKeys.ok.disabled = my != null || !typed;
       actions.replaceChildren();
       return;
     }
-    const done = r.ans[seat] || sent.has(r.key);
+    const done = myAnswer(r), sentN = done && typeof done.n === 'number' ? String(done.n) : '';
+    const shownAns = done ? sentN : typed; // after giving up there's no number to show
     stage.replaceChildren(h('div', { class: 'qf-sum' },
       h('span', null, String(r.x)), h('span', { class: 'op' }, op.sym), h('span', null, String(r.y)), h('span', { class: 'op' }, '='),
-      h('span', { class: 'ans' + (typed ? '' : ' empty') }, done && r.ans[seat] ? String(r.ans[seat].n) : typed || '?')));
+      h('span', { class: 'ans' + (shownAns ? '' : ' empty') }, shownAns || '?')));
     eyebrow.textContent = `Sums · ${op.name}`;
     padKeys.ok.textContent = '=';
-    say(flash || (done ? 'Got it! Checking with ' + P + '’s phone…' : 'Go!'));
+    padKeys.ok.disabled = !!done || !typed;
+    say(flash || (done ? answeredLine(r) : 'Go!'));
     actions.replaceChildren(...(done ? [] : [btn('Give up', 'btn-ghost', () => send(r, { pass: true }))]));
   }
   function paint() {
@@ -441,9 +454,10 @@ function makeQF(box, ctx) {
     const title = r.w === seat ? 'You got it first!' : r.w ? `${P} got it first` : r.ans.host && r.ans.host.ok ? 'Dead heat! No point' : 'Nobody got it';
     const shownWord = r.type === 'w' ? (win ? win.w : r.fits[0]) : null;
     const others = r.type === 'w' ? r.fits.filter((w) => w !== shownWord).slice(0, 3) : [];
+    // replaceChildren() writes a null out as the text "null", so leave the line out instead
     result.replaceChildren(h('b', null, title),
       h('span', { class: 'times' }, [secs('You', r.ans[seat]), secs(P, r.ans[opp])].filter(Boolean).join(' · ')),
-      others.length ? h('span', { class: 'also' }, (win ? 'Also: ' : 'Could have been: ') + others.join(', ')) : null);
+      ...(others.length ? [h('span', { class: 'also' }, (win ? 'Also: ' : 'Could have been: ') + others.join(', '))] : []));
     result.hidden = false; say('');
     card.classList.remove('racing');
     shown++; paintScore(); shown--;
@@ -476,7 +490,7 @@ function makeQF(box, ctx) {
     }
     paintScore();
     if (st.winner) { finish(); return; }
-    if (st.cur.key !== cur) { cur = st.cur.key; input.value = ''; typed = ''; flash = ''; lockUntil = 0; }
+    if (st.cur.key !== cur) { cur = st.cur.key; input.value = ''; typed = ''; flash = ''; }
     paint();
     race();
   }

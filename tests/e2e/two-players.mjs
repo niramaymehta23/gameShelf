@@ -9,7 +9,7 @@
 // Screenshots land in tests/e2e/screens/ (git-ignored).
 // First run on a new machine: npx playwright install chromium
 
-import { twoPhones, PHONE, URL, sleep, snap, state, until, rpsRound, rpsSettled } from './lib.mjs';
+import { twoPhones, PHONE, URL, sleep, snap, state, until, rpsRound, rpsSettled, junk } from './lib.mjs';
 
 let failures = 0;
 function check(cond, label) { console.log(`${cond ? '  ok ' : '  FAIL'}  ${label}`); if (!cond) failures++; }
@@ -332,6 +332,34 @@ try {
   check(await a.locator('.gbox').count() === 4, 'four games on the shelf');
   await snap(a, '24-shelf-four');
 
+  console.log('Stats');
+  await a.getByRole('button', { name: 'All the stats' }).click();
+  await a.locator('.stats-log li').first().waitFor({ timeout: 8000 });
+  const log = await a.locator('.stats-log li').allInnerTexts();
+  check(log.length === 3 && /Hues/i.test(log[0]) && /Battleships/i.test(log[1]) && /Connect Four/i.test(log[2]), 'the log lists the three finished games, newest first');
+  check(/Battleships[\s\S]*Accuracy/.test(await a.locator('.stats').innerText()), 'Battleships accuracy is there');
+  check(await junk(a) === null, 'no undefined/null/NaN in the stats');
+  await snap(a, '26-stats', 450);
+  await a.locator('#sheet .sheet-content').evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  await snap(a, '26-stats-log');
+  await sheetBtn(a, 'Back to the shelf');
+
+  console.log('Names');
+  const guestDev = await state(a, 'G.table.guest.dev');
+  await b.getByRole('button', { name: 'Change my name' }).click();
+  check(await b.locator('#sheet button[type=submit]').isDisabled(), 'Save waits for a different name');
+  await b.fill('#renameInput', '   ');
+  check(await b.locator('#sheet button[type=submit]').isDisabled(), 'a blank name can’t be saved');
+  await b.fill('#renameInput', 'Dhurandhar');
+  await snap(b, '25-rename', 450);
+  await b.locator('#sheet button[type=submit]').click();
+  check(await a.locator('#toast', { hasText: 'Saharsh is now Dhurandhar' }).waitFor({ timeout: 6000 }).then(() => true, () => false), 'the other phone hears about the new name');
+  await until(a, () => document.querySelector('#partnerName').textContent === 'Dhurandhar');
+  check((await a.locator('.shelf-head').innerText()).includes('Dhurandhar'), 'shelf and partner chip use the new name');
+  const bHead = await until(b, () => document.querySelector('.shelf-head .script').textContent.startsWith('Dhurandhar'), null, 5000).then(() => '', () => b.locator('.shelf-head').innerText());
+  check(!bHead, 'and so does the renamed phone' + (bHead ? ` (shows "${bHead}")` : ''));
+  check(await state(a, 'G.table.guest.dev') === guestDev, 'the seat still belongs to the same phone');
+
   await a.locator('#chatBtn').click();
   await snap(a, '11-chat-sheet');
   await a.locator('.chat-emoji button[aria-label="Laughing"]').click();
@@ -355,6 +383,15 @@ try {
   check(await b.locator('#toast .chat-note', { hasText: 'see you at 8' }).waitFor({ timeout: 6000 }).then(() => true, () => false), 'custom note arrives');
 
   console.log('Recovery');
+  // sitting back down with the code under another name renames the seat
+  await b.getByRole('button', { name: 'Leave the table' }).click();
+  await b.locator('#sheet').getByRole('button', { name: 'Leave the table' }).click();
+  await b.fill('#nameInput', 'Saharsh');
+  await b.getByRole('button', { name: 'Join with a code' }).click();
+  await b.locator('#codeInput').pressSequentially(code);
+  await b.locator('.gbox').first().waitFor({ timeout: 8000 });
+  await until(a, () => G.table.guest.name === 'Saharsh');
+  check(await state(b, 'G.seat') === 'guest', 'joining again with the code: same seat, name back to Saharsh');
   await a.reload();
   await a.locator('#bar').waitFor({ state: 'visible', timeout: 8000 });
   check(true, 'reload returns to the same table');

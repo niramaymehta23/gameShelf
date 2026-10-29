@@ -40,7 +40,8 @@ The dot under your partner's name tells you where they are: **green** on the sam
 - **Quickfire.** Two races in one box. **Words**: you each pick a letter in secret, then race to type
   a real word that fits, like S _ _ _ T. **Sums**: you each pick a number, then race to answer, like
   67 − 24. Play Words, Sums, or Mixed. Each phone times its own player from the moment the puzzle
-  appears on *that* screen, so a slow connection never costs you a round.
+  appears on *that* screen, so a slow connection never costs you a round. Answers go the moment
+  they're long enough, and a wrong one clears so you can try again straight away.
 
 ## Around the table
 
@@ -48,6 +49,11 @@ The dot under your partner's name tells you where they are: **green** on the sam
   If one of you quits, the other decides whether to keep it saved. A saved game shows a sticker on
   its box, and picking it again carries on where you left off.
 - **The score.** A score sheet on the dresser counts wins per game for the two of you.
+- **All the stats.** Under the score: wins and winning runs, your rock, paper, scissors habits, each
+  game's records (fewest discs to win, Battleships accuracy, fewest cards to win in Hues, the fastest
+  Quickfire word) and a log of recent games. Worked out from the games' saved moves, so older games
+  count too.
+- **Change your name.** On the shelf, or by joining the table again with the code under a new name.
 - **Reactions and notes.** Tap the chat button to send an emoji (it rains down on your partner's
   screen) or a short note of up to 80 characters (it arrives as a taped paper note).
 - **Recent tables.** Your phone remembers the tables you've sat at, with your partner's name, so you
@@ -242,7 +248,7 @@ npm test                          # unit tests, then two browser "phones" play e
 HEADED=1 npm run test:e2e         # watch the phones play
 ```
 
-- `tests/unit/`: the game replays, Hues and Quickfire rules, and table history, run in Node.
+- `tests/unit/`: the game replays, Hues and Quickfire rules, the stats, and table history, run in Node.
   `replay.mjs` compares every replay function against recorded results.
 - `tests/e2e/`: Playwright drives two phones at 390×844 through full games of everything, saving
   and quitting, chat, reconnecting and reloading. Screenshots land in `tests/e2e/screens/`.

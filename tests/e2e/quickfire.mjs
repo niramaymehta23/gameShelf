@@ -1,9 +1,11 @@
 // Quickfire on two phones against the emulators: setup by the RPS winner, Words with the keyboard
 // kept up between rounds, fair timing when one phone sees the puzzle late, a refused word, giving
-// up, letters no word fits, a whole game to 5, then Sums with the keypad and a wrong answer.
+// up, letters no word fits, a whole game to 5, then Sums with the keypad: answers send themselves
+// once they have as many digits as the answer, a wrong one can be retried at once, and giving up
+// never leaves junk like "undefined" on screen.
 //   run by npm run test:e2e (or: node tests/e2e/quickfire.mjs with npm start running)
 import assert from 'node:assert/strict';
-import { twoPhones, URL, sleep, snap as shot, until, setUpTable, rpsRound } from './lib.mjs';
+import { twoPhones, URL, sleep, snap as shot, until, setUpTable, rpsRound, junk } from './lib.mjs';
 const { browser, a, b, errors } = await twoPhones();
 const snap = (p, name) => shot(p, name, 350);
 const ok = (msg) => console.log('  ok ' + msg);
@@ -91,15 +93,15 @@ try {
   await a.keyboard.type('MIR');
   await until(a, () => /SMIRT isn’t in our dictionary/.test(document.querySelector('.qf-status').textContent));
   assert.equal(await a.evaluate((k) => !!G.match.ans?.[k + 'h'], key), false, 'a wrong word is never sent');
+  assert.equal(await a.locator('.qf-input').inputValue(), '', 'a refused word clears, ready for the next try');
   await snap(a, 'qf-05-not-a-word');
-  for (let i = 0; i < 3; i++) await a.keyboard.press('Backspace');
   await a.locator('.qf-actions').getByRole('button', { name: 'Give up' }).click();
   assert.ok(await inputFocused(a), 'tapping Give up doesn’t take the keyboard away');
   await until(b, () => /gave up/.test(document.querySelector('.qf-status').textContent));
   await sleep(600);
   await b.keyboard.type('AIN'); // SAINT
   await Promise.all([a, b].map((p) => until(p, (k) => qfState(G.match).rounds.some((r) => r.key === k && r.w === 'guest'), key)));
-  ok('SMIRT refused on the phone; after A gave up, B still took the round');
+  ok('SMIRT refused and cleared on the phone; after A gave up, B still took the round');
 
   // ---- round 4: Q to X has no everyday word: dealt again, nobody scores ----
   key = await nextRound(key);
@@ -138,6 +140,7 @@ try {
   assert.ok(!(await inputFocused(a)), 'no text keyboard for Sums');
   key = await roundKey(a);
   const tap = async (p, keys) => { for (const k of keys) await p.locator(`.qf-key[data-key="${k}"]`).tap(); };
+  assert.ok(await a.locator('.qf-key[data-key="ok"]').isDisabled(), 'nothing typed: nothing to lock in');
   await tap(a, ['2', '4', 'ok']);
   await tap(b, ['1', '0', '1', 'ok']);
   await until(b, () => /from 1 to 100/.test(document.querySelector('.qf-status').textContent));
@@ -145,13 +148,36 @@ try {
   await phase(key, 'race');
   assert.equal((await a.locator('.qf-sum').innerText()).replace(/\s/g, ''), '67−24=?');
   await snap(a, 'qf-08-sum');
-  await tap(b, ['4', '4', 'ok']);
+  assert.ok(await b.locator('.qf-key[data-key="ok"]').isDisabled(), 'an empty answer can’t be sent');
+  await tap(b, ['4', '4']); // two digits, like the answer: sent without =
   await until(b, () => /Not 44/.test(document.querySelector('.qf-status').textContent));
+  assert.equal(await b.evaluate((k) => !!G.match.ans?.[k + 'g'], key), false, 'a wrong sum is never sent');
   await snap(b, 'qf-09-wrong');
-  await sleep(1000);
-  await tap(b, ['4', '3', 'ok']);
+  await tap(b, ['4', '3']); // straight away: no lockout
   await Promise.all([a, b].map((p) => until(p, (k) => qfState(G.match).rounds.some((r) => r.key === k && r.w === 'guest'), key)));
-  ok('Sums: 101 refused, 67 − 24, a wrong 44 locks the keypad, then 43 wins');
+  ok('Sums: 101 refused, 67 − 24, 44 sends itself and is refused, 43 straight after wins');
+
+  // ---- giving up a sum: the answer box and status say so, no "undefined" ----
+  key = await nextRound(key);
+  await tap(a, ['3', '0', 'ok']); await tap(b, ['1', '0', 'ok']);
+  await phase(key, 'race');
+  await b.locator('.qf-actions').getByRole('button', { name: 'Give up' }).click();
+  await until(b, (k) => !!G.match.ans?.[k + 'g']?.pass, key);
+  assert.equal((await b.locator('.qf-sum .ans').innerText()).trim(), '?');
+  assert.match(await b.locator('.qf-status').innerText(), /gave up/i);
+  assert.equal(await junk(b), null, 'no undefined/null/NaN on screen');
+  await snap(b, 'qf-11-gave-up');
+  // digits typed into a chat note stay in the note: they don't answer the sum
+  await a.locator('#chatBtn').click();
+  await a.locator('.chat-input').click(); await a.keyboard.type('8');
+  assert.equal(await a.locator('.chat-input').inputValue(), '8');
+  assert.equal(await a.evaluate((k) => !!G.match.ans?.[k + 'h'], key), false, 'typing in the chat didn’t answer');
+  await a.locator('#sheet .scrim').click({ position: { x: 20, y: 20 } });
+  await a.locator('#sheet').waitFor({ state: 'hidden' });
+  await tap(a, ['2', '0']);
+  await Promise.all([a, b].map((p) => until(p, (k) => qfState(G.match).rounds.some((r) => r.key === k && r.w === 'host'), key)));
+  assert.equal(await junk(a), null); assert.equal(await junk(b), null);
+  ok('after B gave up the sum, B’s phone shows ? and says so; A took the round');
 
   // ---- quitting mid-game ----
   await a.locator('#bar [aria-label="Back to the shelf"]').click();

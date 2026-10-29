@@ -37,6 +37,8 @@ export async function snap(p, name, wait = 0) {
 }
 export const until = (p, fn, arg, timeout = 15000) => p.waitForFunction(fn, arg, { timeout });
 export const state = (p, expr) => p.evaluate(expr);
+// the first "undefined", "null" or "NaN" showing on the page, or null when there's none
+export const junk = (p) => p.evaluate(() => (document.body.innerText.match(/\b(undefined|null|NaN)\b/) || [null])[0]);
 
 // A sets up a table, B joins it with the code; both end up at the shelf. Returns the code.
 export async function setUpTable(a, b, names = ['Niramay', 'Saharsh']) {
