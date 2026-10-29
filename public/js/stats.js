@@ -24,12 +24,13 @@ function tableStats(table, matches) {
 
   const s = {
     games: done.length, wins: seatsOf(() => 0), draws: 0, streak: { seat: null, n: 0 }, best: seatsOf(() => 0),
-    played: { c4: 0, bs: 0, hu: 0, qf: 0 }, log: [],
+    played: { c4: 0, bs: 0, hu: 0, qf: 0, ww: 0 }, log: [],
     rps: seatsOf(() => ({ rock: 0, paper: 0, scissors: 0, throws: 0, opener: { rock: 0, paper: 0, scissors: 0 }, tosses: 0 })),
     c4: seatsOf(() => ({ wins: 0, fewest: null, discs: 0, first: 0 })),
     bs: seatsOf(() => ({ wins: 0, shots: 0, hits: 0, best: null, fewest: null, run: 0 })),
     hu: seatsOf(() => ({ wins: 0, fewest: null, pickup: 0, callouts: 0, hues: 0 })),
     qf: seatsOf(() => ({ wins: 0, rounds: 0, word: null, sum: null, answers: 0, ms: 0, gaveUp: 0 })),
+    ww: seatsOf(() => ({ wins: 0, words: 0, longest: null, nines: 0 })),
   };
 
   // wins and streaks: a draw ends the run
@@ -121,6 +122,18 @@ const STATS_GAME = {
     rec[st.winner].wins++;
     const lose = st.score[other(st.winner)];
     return `${st.score[st.winner]}–${lose} in ${QF_MODES[st.setup.mode].name}`;
+  },
+  ww(m, rec) {
+    const st = wwState(m);
+    for (const f of st.finds) {
+      const r = rec[f.by];
+      r.words++;
+      if (f.w.length === 9) r.nines++;
+      if (!r.longest || f.w.length > r.longest.w.length) r.longest = { w: f.w };
+    }
+    if (!st.winner) return '';
+    rec[st.winner].wins++;
+    return `${st.score[st.winner]}–${st.score[other(st.winner)]}, the wheel’s nine-letter word was ${st.wheel.nine[0]}`;
   },
 };
 
@@ -219,6 +232,15 @@ function statsView(s) {
     const what = k === 'word' ? f.w : `${f.x} ${QF_OPS[f.op].sym} ${f.y}`;
     return h('p', { class: 'stats-foot' }, `Quickest ${k}: ${what}, by ${f.who} in ${statsSecs(f.ms)}.`);
   })));
+  if (s.played.ww) {
+    const best = [me, them].filter((x) => s.ww[x].longest).sort((x, y) => s.ww[y].longest.w.length - s.ww[x].longest.w.length)[0];
+    out.push(section('Word Wheel', grid([
+      ['Wins', (x) => s.ww[x].wins, statsNum, 'hi'],
+      ['Words found', (x) => s.ww[x].words, statsNum, 'hi'],
+      ['Longest word', (x) => s.ww[x].longest && s.ww[x].longest.w.length, statsNum, 'hi'],
+      ['Nine-letter words', (x) => s.ww[x].nines, statsNum, 'hi'],
+    ]), best ? h('p', { class: 'stats-foot' }, `Longest word: ${s.ww[best].longest.w}, by ${best === me ? 'you' : firstName(partnerName())}.`) : ''));
+  }
 
   const day = (at) => (at ? new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '');
   out.push(section('The log', h('ol', { class: 'stats-log' }, ...s.log.map((g) => h('li', null,

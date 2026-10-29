@@ -3,7 +3,7 @@
    Our Game Shelf — util.js
    Small DOM helpers, icons and the synthesised sound effects.
    Files load in order (see index.html) and share globals:
-   util → net → app → lobby → rps → connect4 → battleships → hues → words → quickfire → stats → boot
+   util → net → app → lobby → rps → connect4 → battleships → hues → words → quickfire → wheels → wordwheel → stats → boot
    ========================================================= */
 
 // ---------- small utilities ----------

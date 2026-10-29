@@ -28,9 +28,9 @@ async function openQuickfire(first) {
 try {
   await Promise.all([a, b].map((p) => p.goto(URL)));
   await setUpTable(a, b);
-  assert.equal(await a.locator('.cubby .gbox').count(), 4);
+  assert.equal(await a.locator('.cubby .gbox').count(), 5);
   await snap(a, 'qf-01-shelf');
-  ok('Quickfire is the fourth game on the shelf');
+  ok('Quickfire is on the shelf with the others');
 
   // ---- setup: only the RPS winner chooses ----
   await openQuickfire(true);

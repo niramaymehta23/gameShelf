@@ -74,11 +74,12 @@ try {
   const code = await setUpTable(a, b);
   await a.waitForTimeout(2700);
 
-  // A phone shows three readable games per row; the fourth starts the next row.
+  // A phone shows three readable games per row; the fourth starts the next row, with the fifth.
   const games = await a.locator('.cubby .gbox').evaluateAll((nodes) => nodes.map((e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, b: r.bottom }; }));
-  assert.equal(games.length, 4);
+  assert.equal(games.length, 5);
   assert.ok(Math.abs(games[0].b - games[2].b) < 4);
   assert.ok(games[3].y > games[0].y + 80);
+  assert.ok(Math.abs(games[3].b - games[4].b) < 4);
   assert.ok(games.every((g) => g.w >= 90));
   await snap(a, 'shelf-01-phone');
   console.log('  ok three readable games per phone row');

@@ -266,6 +266,16 @@ const GAMES = {
       { t: 'Stuck?', d: 'Give up, and your partner can take their time. If you both give up, nobody scores. Letters no everyday word fits are dealt again.' },
     ],
   },
+  ww: {
+    name: 'Word Wheel', cls: 'ww', art: 'art/box-ww.png',
+    starter: { line: (me, P) => (me ? 'You spin the wheel, then you both race.' : `${P} spins the wheel, then you both race.`), go: 'To the wheel' },
+    howTo: [
+      { t: 'Who spins', d: 'Rock, paper, scissors, best of three. The winner spins the wheel: nine letters, one of them in the middle. You both get the same wheel.', art: 'art/rps-rock.png' },
+      { t: 'Swipe a word', d: 'Put a finger on a letter, slide across the others and let go. Slide back to take off the last letter. Each letter on the wheel goes in a word once.' },
+      { t: 'What counts', d: 'Four letters or more, and every word needs the middle letter. No plurals or names. Every wheel hides a nine-letter word.' },
+      { t: 'First to five', d: 'A word is only for whoever finds it first, so keep an eye on your partner’s list. Stuck? Shuffle turns the letters round.' },
+    ],
+  },
 };
 
 // ---------------- how to play ----------------
@@ -403,7 +413,7 @@ Screens.match = () => {
     update() {
       const m = G.match; if (!m) return;
       const st = rpsState(m);
-      const want = !howToDone ? 'howto' : (!st.starter || !introDone) ? 'rps' : (m.game === 'hu' && m.hueVersion === 2 && !m.hueRules) ? 'hue-rules' : (m.game === 'qf' && !qfSetup(m)) ? 'qf-setup' : m.game;
+      const want = !howToDone ? 'howto' : (!st.starter || !introDone) ? 'rps' : (m.game === 'hu' && m.hueVersion === 2 && !m.hueRules) ? 'hue-rules' : (m.game === 'qf' && !qfSetup(m)) ? 'qf-setup' : (m.game === 'ww' && !wwSetup(m)) ? 'ww-spin' : m.game;
       if (want !== phaseName) setPhase(want);
       phase && phase.update(m);
     },
@@ -429,6 +439,8 @@ Screens.match = () => {
     else if (name === 'hu') phase = makeHU(box, ctx);
     else if (name === 'qf-setup') phase = makeQFSetup(box);
     else if (name === 'qf') phase = makeQF(box, ctx);
+    else if (name === 'ww-spin') phase = makeWWSpin(box);
+    else if (name === 'ww') phase = makeWW(box, ctx);
     else phase = makeBS(box, ctx);
   }
   function confirmLeave() {

@@ -493,3 +493,41 @@ def box_qf(W=360, H=480):
     save_rgba(s.rgba(), 'box-qf.png')
 
 box_qf()
+
+# ================= Word Wheel =================
+# The box: the newspaper puzzle on a sage wash: a cream paper disc inked with its ring and spokes, an
+# ochre middle with a W, and WHEEL traced from the middle out in a red pencil line.
+WW_STROKES = {  # letters as ink strokes in a -1..1 box
+    'W': [[(-1, -1), (-0.5, 1), (0, -0.2), (0.5, 1), (1, -1)]],
+    'H': [[(-0.8, -1), (-0.8, 1)], [(0.8, -1), (0.8, 1)], [(-0.8, 0), (0.8, 0)]],
+    'E': [[(0.8, -1), (-0.7, -1), (-0.7, 1), (0.8, 1)], [(-0.7, 0), (0.5, 0)]],
+    'L': [[(-0.6, -1), (-0.6, 1), (0.8, 1)]],
+    'T': [[(-0.9, -1), (0.9, -1)], [(0, -1), (0, 1)]],
+    'A': [[(-0.9, 1), (0, -1), (0.9, 1)], [(-0.5, 0.3), (0.5, 0.3)]],
+    'N': [[(-0.8, 1), (-0.8, -1), (0.8, 1), (0.8, -1)]],
+    'I': [[(0, -1), (0, 1)], [(-0.5, -1), (0.5, -1)], [(-0.5, 1), (0.5, 1)]],
+}
+
+def box_ww(W=360, H=480):
+    s = Sheet(W, H)
+    cx, cy, R, r = 180, 236, 150, 46
+    s.wash(rrect(W, H, 8, 8, W - 8, H - 8, 10) & ~disk(W, H, cx, cy, R + 6), (96, 132, 104), strength=0.92, bloom=0.42, edge=0.7, gran=0.3, rough=0.05)
+    s.wash(disk(W, H, cx, cy, R), (244, 234, 212), strength=0.3, bloom=0.5, rough=0.06)
+    s.wash(disk(W, H, cx, cy, r), OCHRE, strength=0.75, edge=1.1, rough=0.08)
+    spokes = [[(cx + r * math.cos(a), cy + r * math.sin(a)), (cx + R * math.cos(a), cy + R * math.sin(a))] for a in (i * math.pi / 4 - math.pi / 2 for i in range(8))]
+    s.ink([circle_path(cx, cy, R), circle_path(cx, cy, r)] + spokes, width=2.4)
+    spot = lambda i: (cx + 100 * math.cos(i * math.pi / 4 - 3 * math.pi / 8), cy + 100 * math.sin(i * math.pi / 4 - 3 * math.pi / 8))  # noqa: E731
+    # the red pencil: W in the middle, then H, E, E, L round the wheel
+    trail = [(cx, cy)] + [spot(i) for i in (7, 0, 1, 2)]
+    s.wash(np.logical_or.reduce([disk(W, H, x, y, 26) for x, y in trail]), OCHRE, strength=0.35, rough=0.1)
+    s.ink([trail], width=7, color=RED, alpha=0.55, wobble=2)
+    def letter(ch, x, y, size):
+        s.ink([[(x + px * size, y + py * size) for px, py in stroke] for stroke in WW_STROKES[ch]], width=size * 0.32)
+    letter('W', cx, cy, 20)
+    for i, ch in enumerate('EELTANIH'):
+        letter(ch, *spot(i), 15)
+    splatter(s, OCHRE, 7, (30, 20, 330, 70), 5)
+    splatter(s, RED, 5, (30, 410, 330, 460), 4)
+    save_rgba(s.rgba(), 'box-ww.png')
+
+box_ww()

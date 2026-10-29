@@ -42,6 +42,12 @@ The dot under your partner's name tells you where they are: **green** on the sam
   67 − 24. Play Words, Sums, or Mixed. Each phone times its own player from the moment the puzzle
   appears on *that* screen, so a slow connection never costs you a round. Answers go the moment
   they're long enough, and a wrong one clears so you can try again straight away.
+- **Word Wheel.** Like the newspaper puzzle: nine letters on a wheel, one in the middle. The rock,
+  paper, scissors winner spins it, and you both race on the same wheel. Put a finger on a letter and
+  swipe across the others to make a word, then let go. Four letters or more, every word needs the
+  middle letter, each letter once, no plurals. A word only counts for whoever finds it first; first
+  to five wins. There are 100 wheels, each with a nine-letter word hidden in it, and every word each
+  one allows is worked out in advance, so a wrong word is refused at once.
 
 ## Around the table
 
@@ -51,7 +57,7 @@ The dot under your partner's name tells you where they are: **green** on the sam
 - **The score.** A score sheet on the dresser counts wins per game for the two of you.
 - **All the stats.** Under the score: wins and winning runs, your rock, paper, scissors habits, each
   game's records (fewest discs to win, Battleships accuracy, fewest cards to win in Hues, the fastest
-  Quickfire word) and a log of recent games. Worked out from the games' saved moves, so older games
+  Quickfire word, the longest Word Wheel word) and a log of recent games. Worked out from the games' saved moves, so older games
   count too.
 - **Change your name.** On the shelf, or by joining the table again with the code under a new name.
 - **Reactions and notes.** Tap the chat button to send an emoji (it rains down on your partner's
@@ -116,7 +122,7 @@ chosen for games because it's durable (a saved game is still there next month), 
 change to both phones live, and it queues writes while a phone is offline.
 
 **Moves are an append-only log, never a board.** A move is written under its own numbered key
-(`moves.m007`, `shots.s012`, `plays.p00042`, …). A phone never rewrites the board, only adds a
+(`moves.m007`, `shots.s012`, `plays.p00042`, `finds.f004`, …). A phone never rewrites the board, only adds a
 line to the log, so the two phones can't overwrite each other. The board, whose turn it is and who
 won are *worked out* by replaying the log in order. Both phones run the same replay on the same
 log, so they always agree, and nothing derived is ever stored. That's also what makes saving free:
@@ -127,7 +133,8 @@ a saved game is just a log that stops, and carrying on is replaying it.
   at once while it's still being confirmed.
 - New Hues games write each move in a **transaction** that checks the move against the latest log
   first, so a stale tap can't sneak in out of order. (Saved games from before that keep their
-  original replay.) The one-time choices (Hues rules, the Quickfire setup)
+  original replay.) Word Wheel words are claimed the same way, so the same word can't be taken by
+  both phones at once. The one-time choices (Hues rules, the Quickfire setup, the wheel)
   are transactions too, so only the rock, paper, scissors winner can make them, and only once.
 - The replay functions are pure, and a test (`tests/unit/replay.mjs`) checks them against recorded
   results for a few hundred games. Changing how old games replay would break saved games, so it
@@ -248,7 +255,8 @@ npm test                          # unit tests, then two browser "phones" play e
 HEADED=1 npm run test:e2e         # watch the phones play
 ```
 
-- `tests/unit/`: the game replays, Hues and Quickfire rules, the stats, and table history, run in Node.
+- `tests/unit/`: the game replays, Hues, Quickfire and Word Wheel rules (and every wheel's word list), the
+  stats, and table history, run in Node.
   `replay.mjs` compares every replay function against recorded results.
 - `tests/e2e/`: Playwright drives two phones at 390×844 through full games of everything, saving
   and quitting, chat, reconnecting and reloading. Screenshots land in `tests/e2e/screens/`.
