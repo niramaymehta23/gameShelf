@@ -571,7 +571,7 @@ function makeHU(box, ctx) {
       toast(ev.by === seat ? 'Hues! You’re safe on one card' : `${P} called Hues!`);
       const chip = ev.by === seat ? chipMe : chipThem;
       await settle(chip.animate([{ scale: 1 }, { scale: 1.08, offset: 0.4 }, { scale: 1 }], { duration: 420 }));
-    } else if (ev.k === 'caught' || (ev.k === 'callout' && ev.ids)) {
+    } else if (ev.k === 'callout') {
       paint(after);
       Sound.lose(); vibrate([10, 60, 10]);
       toast(ev.by === seat ? `Caught! ${P} picks up ${HUE_CALLOUT}` : `${P} called you out: pick up ${HUE_CALLOUT}`, 3000);

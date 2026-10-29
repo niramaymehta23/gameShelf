@@ -59,7 +59,6 @@ const Net = {
   serverOffset: 0,
   now() { return Date.now() + this.serverOffset; },
   started: false,
-  subs: new Map(),      // path -> number of listeners (for debugging)
   statusFns: new Set(),
 
   // "online" follows the Realtime Database connection; Firestore reconnects on its own alongside it
@@ -108,13 +107,7 @@ const Net = {
         } else await self.timed(ref.delete());
       },
       onSnapshot(fn, onError) {
-        self.subs.set(path, (self.subs.get(path) || 0) + 1);
-        const off = ref.onSnapshot((s) => fn(self.snap(path, s)), (e) => onError && onError(e));
-        return () => {
-          off();
-          const n = (self.subs.get(path) || 1) - 1;
-          if (n) self.subs.set(path, n); else self.subs.delete(path);
-        };
+        return ref.onSnapshot((s) => fn(self.snap(path, s)), (e) => onError && onError(e));
       },
     };
   },
