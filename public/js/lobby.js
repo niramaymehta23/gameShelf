@@ -277,12 +277,27 @@ const GAMES = {
       { t: 'Stuck?', d: 'Shuffle turns the letters round. Once you have three words, the bulb shows the first letter of a word you haven’t found, then the second: two letters a game. The flag gives up, and your partner wins.' },
     ],
   },
+  sl: {
+    name: 'Word Slam', cls: 'sl', art: 'art/box-sl.png',
+    starter: { line: (me, P) => (me ? 'Ten cards each. You make the first play.' : `Ten cards each. ${P} makes the first play.`), go: 'Deal the cards' },
+    howTo: [
+      { t: 'Ten cards. Four letters.', d: 'Rock, paper, scissors, best of three. The winner makes the opening play. Then both of you race: play whenever you spot a word, even several cards in a row.', art: 'art/rps-rock.png' },
+      { t: 'Drag, drop, new word', d: 'Drag a card onto a letter, or tap your card then its position. Change just one letter to make a real four-letter word. You can reuse earlier words.', art: 'art/box-sl.png' },
+      { t: 'Two sides to every card', d: 'Tap a card, then Flip to use its other letter. A blank can be any letter. Words are checked with the same built-in dictionary as Quickfire; plurals count.', art: 'art/box-sl.png' },
+      { t: 'Empty your hand to win', d: 'First to play all ten cards wins. Tap Stuck only when neither side of any card can make a word. When both are stuck, a new playable word appears. Keep your remaining cards and race on.', art: 'art/box-sl.png' },
+    ],
+  },
 };
 
 // ---------------- how to play ----------------
 // The same steps show before every new game, behind the ? in a game, and on the shelf.
 function howToList(key) {
-  return h('ol', { class: 'howto' }, ...(key === 'hu' ? hueRuleSteps(G.match?.game === 'hu' ? G.match : null) : GAMES[key].howTo).map((s, i) => h('li', null,
+  let steps = key === 'hu' ? hueRuleSteps(G.match?.game === 'hu' ? G.match : null) : GAMES[key].howTo;
+  if (key === 'sl' && G.match?.game === 'sl' && G.match.slamVersion !== 2) {
+    steps = steps.map((step, i) => i === 0 ? { ...step, d: 'This saved game uses the original rules: RPS winner first, then take turns.' }
+      : i === 3 ? { ...step, d: 'Empty your hand first to win. Pass only when blocked. Two consecutive passes end this saved game: fewest cards wins, or a draw with equal hands. Start a new game for free-for-all rules.' } : step);
+  }
+  return h('ol', { class: 'howto' }, ...steps.map((s, i) => h('li', null,
     h('span', { class: 'n' }, i + 1),
     h('div', null, h('b', null, s.t), h('span', null, s.d)),
     s.art ? h('img', { class: 'wc', src: s.art, alt: '' }) : null)));
@@ -340,7 +355,7 @@ Screens.shelf = () => {
           h('h3', null, 'The score'), sheet),
         h('img', { class: 'wc sprig', src: 'art/sprig-a.png', alt: '' }));
       const dresser = h('div', { class: 'dresser sage-wood' },
-        h('div', { class: 'cornice sage-wood' }), cubby, h('div', { class: 'shelf-board sage-wood' }), lower);
+        h('div', { class: 'cornice sage-wood' }), cubby, h('div', { class: 'shelf-board sage-wood' }, h('span', { class: 'shelf-browse' }, `${Object.keys(GAMES).length} games · swipe to browse`)), lower);
       note = h('p', { class: 'hand-note shelf-note' });
       el.append(dresser, note,
         h('div', { class: 'shelf-foot' },
@@ -445,6 +460,7 @@ Screens.match = () => {
     else if (name === 'qf') phase = makeQF(box, ctx);
     else if (name === 'ww-spin') phase = makeWWSpin(box);
     else if (name === 'ww') phase = makeWW(box, ctx);
+    else if (name === 'sl') phase = makeSL(box);
     else phase = makeBS(box, ctx);
   }
   function confirmLeave() {

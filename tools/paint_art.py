@@ -531,3 +531,29 @@ def box_ww(W=360, H=480):
     save_rgba(s.rgba(), 'box-ww.png')
 
 box_ww()
+
+# ================= Word Slam =================
+# Four cream letter cards over a navy wash, with one poppy replacement card landing on the word.
+def box_sl(W=360, H=480):
+    s = Sheet(W, H)
+    s.wash(rrect(W, H, 8, 8, W - 8, H - 8, 10), NAVY, strength=0.85, bloom=0.45, edge=0.8, rough=0.06)
+    strokes = dict(WW_STROKES, S=[[(0.8, -0.8), (0.1, -1), (-0.8, -0.6), (-0.7, -0.1), (0.7, 0.3), (0.8, 0.7), (0, 1), (-0.8, 0.8)]], M=[[(-0.8, 1), (-0.8, -1), (0, 0.2), (0.8, -1), (0.8, 1)]])
+    for i, ch in enumerate('SLAM'):
+        x, y = 58 + i * 81, 255 + (i % 2) * 9
+        s.wash(rrect(W, H, x - 35, y - 57, x + 35, y + 57, 6), (245, 232, 200), strength=0.3, edge=0.6, rough=0.03)
+        # Lift the paper out of the blue pigment underneath, leaving a soft painted edge.
+        mask = gaussian_filter(rrect(W, H, x - 32, y - 54, x + 32, y + 54, 5).astype(float), 1.2)
+        s.absorb *= (1 - mask[..., None] * 0.93)
+        s.ink([[(x + px * 21, y + py * 27) for px, py in path] for path in strokes[ch]], width=6, color=INK)
+    x, y = 184, 125
+    s.wash(rrect(W, H, x - 38, y - 50, x + 38, y + 50, 6), RED, strength=0.95, edge=0.9, rough=0.04)
+    cutout = Image.new('L', (W, H), 0)
+    draw = ImageDraw.Draw(cutout)
+    for path in strokes['A']:
+        draw.line([(x + px * 22, y + py * 26) for px, py in path], fill=255, width=7)
+    s.absorb *= 1 - (np.asarray(cutout.filter(ImageFilter.GaussianBlur(0.6)), float) / 255 * 0.95)[..., None]
+    s.ink([[(184, 183), (184, 202)], [(174, 193), (184, 204), (194, 193)]], color=OCHRE, width=4)
+    splatter(s, OCHRE, 10, (24, 350, 336, 445), 5)
+    save_rgba(s.rgba(), 'box-sl.png')
+
+box_sl()

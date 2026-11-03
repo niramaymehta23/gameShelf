@@ -167,7 +167,7 @@ const notice = (kind, m) => ({ id: newId(), by: G.seat, kind, game: m.game, matc
 
 async function startMatch(game) {
   const id = newId();
-  const ok = await write(matchPath(id), { id, game, ...(game === 'hu' ? { hueVersion: 2, hueRules: null } : {}), created: Date.now(), by: G.seat, seed: rid() + rid(), rps: {}, moves: {}, shots: {}, plays: {}, fleets: {}, joined: { [G.seat]: true, [other(G.seat)]: false }, quit: {} }, { set: true });
+  const ok = await write(matchPath(id), { id, game, ...(game === 'sl' ? { slamVersion: 2 } : {}), ...(game === 'hu' ? { hueVersion: 2, hueRules: null } : {}), created: Date.now(), by: G.seat, seed: rid() + rid(), rps: {}, moves: {}, shots: {}, plays: {}, fleets: {}, joined: { [G.seat]: true, [other(G.seat)]: false }, quit: {} }, { set: true });
   // a new game takes the place of a saved one of the same kind
   if (ok) await write(tablePath(), { current: id, saved: { [game]: null } });
 }
@@ -279,6 +279,13 @@ function toast(text, ms = 2400) {
   setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 260); }, ms);
   return t;
 }
+// Gameplay feedback belongs to its original match, including after an animation finishes.
+// Table-level notices keep using toast(), so save/quit confirmations remain visible.
+function matchToast(id, text, ms = 2400) {
+  if (!id || cur.name !== 'match:' + id || G.table?.current !== id) return null;
+  const el = toast(text, ms); el.dataset.match = id; return el;
+}
+
 let sheetToken = 0;
 function openSheet({ title, sub, body, art, actions = [], dismissible = true }) {
   const sh = $('#sheet');
@@ -333,6 +340,7 @@ function route() {
 function show(name) {
   if (cur.name === name) { cur.obj.update && cur.obj.update(); return; }
   const stage = $('#stage');
+  for (const el of document.querySelectorAll('#toast [data-match]')) if (name !== 'match:' + el.dataset.match) el.remove();
   if (cur.el) {
     try { cur.obj.unmount && cur.obj.unmount(); } catch (e) { console.error(e); }
     const old = cur.el; old.classList.add('leaving'); setTimeout(() => old.remove(), 230);

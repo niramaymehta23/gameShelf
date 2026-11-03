@@ -400,6 +400,7 @@ function makeHueRules(box) {
 }
 
 function makeHU(box, ctx) {
+  const toast = (text, ms) => matchToast(m?.id, text, ms);
   const seat = G.seat, opp = other(seat), P = partnerName();
   let m = null, st = null, rendered = -1, animating = false, pending = false, pendingN = -1, endShown = false, dead = false;
   let sel = [], drag = null, cw = 66, chh = 94, choosing = false, colourResolve = null, timerBusy = false;
@@ -436,7 +437,8 @@ function makeHU(box, ctx) {
 
   function layout() {
     const W = box.clientWidth || 358;
-    cw = Math.max(54, Math.min(80, Math.floor(W / 4.8)));
+    const maxCard = box.clientHeight < 600 ? 62 : 80;
+    cw = Math.max(54, Math.min(maxCard, Math.floor(W / 4.8)));
     chh = Math.round(cw * 1.42);
     root.style.setProperty('--cw', cw + 'px');
     root.style.setProperty('--ch', chh + 'px');

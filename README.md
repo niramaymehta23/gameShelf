@@ -8,6 +8,37 @@ Game night on a blue linen tablecloth: a painted dresser of game boxes, watercol
 with washi tape, a milk-painted Connect Four frame and a sea chart. It's made for two people in two
 different places, one on Android and one on iPhone, and it plays the same on both.
 
+## Latest updates
+
+- **Word Slam joins the shelf:** ten two-sided cards each, RPS for the opening play, then a
+  free-for-all race to empty your hand. A checked fresh word rescues genuine dead ends without
+  changing either hand. Older saved games keep their original rules.
+- **Cream and beige paper:** quieter shared surfaces, readable dark labels, and the original
+  blue linen, painted wood and watercolour cards. Word Slam's flip control sits beside *Your hand*;
+  its recent words and Stuck button share an aligned footer.
+- **Phone layouts across the app:** landing, joining, waiting, shelf, RPS and every game are
+  checked at 360×640, 360×780, 390×844 and 402×874. The main screen stays within the viewport;
+  the shelf's games and score list, long rules, table history and stats have their own scrollers.
+  Compact Hues hands, Quickfire keypads and Word Wheel spacing keep the actions visible.
+- **Feedback stays in its game:** game messages disappear when you leave that match, late
+  animations cannot post into another game, and resizing Battleships does not repeat its
+  battle-start announcement.
+
+## A look around the table
+
+These are screenshots from the running app against the local Firebase emulators, with sample
+players in a 390×844 viewport. The same screens adapt to shorter and wider phones.
+
+<p align="center"><img src="docs/screenshots/shelf.png" width="260" alt="The painted game shelf with table code, scores and six games"></p>
+
+| Connect Four | Battleships | Hues |
+| --- | --- | --- |
+| <img src="docs/screenshots/connect-four.png" width="200" alt="Connect Four with discs on the blue frame"> | <img src="docs/screenshots/ships-battle.png" width="200" alt="Battleships sea chart and fleet controls"> | <img src="docs/screenshots/hues.png" width="200" alt="Hues hand, painted discard pile and action buttons"> |
+
+| Quickfire | Word Wheel | Word Slam |
+| --- | --- | --- |
+| <img src="docs/screenshots/quickfire-sums.png" width="200" alt="Quickfire arithmetic puzzle and paper number pad"> | <img src="docs/screenshots/word-wheel.png" width="200" alt="Nine-letter Word Wheel and each player's found-word list"> | <img src="docs/screenshots/word-slam.png" width="200" alt="Word Slam's four-letter word, two-sided cards, flip control and recent words"> |
+
 ## How it works
 
 1. **Set up a table.** Type your name and tap *Set up a table*. You get a four-letter code.
@@ -49,6 +80,18 @@ The dot under your partner's name tells you where they are: **green** on the sam
   one), and your partner's words show only as stars, one a letter, until the race is over. First
   to five wins. There are 100 wheels, each with a nine-letter word hidden in it, and every word each
   one allows is worked out in advance, so a wrong word is refused at once.
+- **Word Slam.** A free-for-all game inspired by Scrabble Slam. Ten two-sided letter cards each,
+  four letters on the table. The RPS winner makes the opening play, then both players race:
+  drag a card onto a letter, or tap a card then its destination. Flip to use either side;
+  blanks can be any letter. The built-in dictionary checks words, including plurals. Earlier
+  words may be reused. First to empty their hand wins, with no refills. Tap **Stuck** only
+  when neither side of any card allows a move. Once both are stuck on the same word, the replay
+  picks a new word checked against the remaining hands, preferring words both can play on.
+  Keep all remaining cards and continue racing. Concurrent plays are checked in Firestore
+  transactions: one card wins a contested word, and a stale attempt stays in its owner's hand.
+  Save/resume, rematches, shelf scores and detailed stats work just like the other games.
+  Existing saved games retain their original alternating-turn rules; new matches use the race.
+  Inspired by the [original card rules](https://winning-moves.com/images/ScrabbleSlam_WebRules.pdf).
 
 ## Around the table
 
@@ -59,7 +102,7 @@ The dot under your partner's name tells you where they are: **green** on the sam
 - **All the stats.** The little card pinned up beside *Pick a game*: drawn as charts, the head-to-head
   and each game's wins, your recent results, pies of your rock, paper, scissors habits, each
   game's records side by side (fewest discs to win, Battleships accuracy, fewest cards to win in Hues, the fastest
-  Quickfire word, the longest Word Wheel word) and a log of recent games. Worked out from the games' saved moves, so older games
+  Quickfire word, the longest Word Wheel word, and Word Slam cards, blanks and times stuck) and a log of recent games. Worked out from the games' saved moves, so older games
   count too.
 - **Change your name.** On the shelf, or by joining the table again with the code under a new name.
 - **Reactions and notes.** Tap the chat button to send an emoji (it rains down on your partner's
@@ -132,12 +175,14 @@ a saved game is just a log that stops, and carrying on is replaying it.
 
 - Writes are deep-merge updates of single fields, so each move only touches its own key.
 - Firestore shows a phone its own writes immediately (latency compensation), so your move appears
-  at once while it's still being confirmed.
+  at once while it's still being confirmed; transaction-based moves are validated before acceptance.
 - New Hues games write each move in a **transaction** that checks the move against the latest log
   first, so a stale tap can't sneak in out of order. (Saved games from before that keep their
   original replay.) Word Wheel words are claimed the same way, so a quick double send can't count
   the same word twice. The one-time choices (Hues rules, the Quickfire setup, the wheel)
   are transactions too, so only the rock, paper, scissors winner can make them, and only once.
+  Word Slam also uses transactions: contested plays serialize, stale attempts keep their cards,
+  and simultaneous Stuck declarations can share a word safely.
 - The replay functions are pure, and a test (`tests/unit/replay.mjs`) checks them against recorded
   results for a few hundred games. Changing how old games replay would break saved games, so it
   can't happen by accident.
@@ -164,8 +209,10 @@ it gets its own set of keys and so its own identity.
 
 There is no game server of our own: the two phones and the shared log are the whole system.
 
-- **Turns can't clash.** Each phone only adds moves when the replay says it's that phone's turn,
+- **Turns and races stay in sync.** Each phone only adds moves when the replay says it's that phone's turn,
   and moves that don't fit (wrong seat, illegal card) are skipped by the replay on both phones.
+  Word Slam opens up after its first play; transactions reject stale drops and serialize
+  simultaneous plays, and its entire word/hand state is derived from the accepted log.
 - **Quickfire timing is per phone.** An answer records the milliseconds measured on the answering
   phone from when the puzzle appeared on *that* screen (the clock doesn't start while the app is in
   the background, and a reload keeps the start time).
@@ -188,9 +235,10 @@ There is no game server of our own: the two phones and the shared log are the wh
   the browser, so the key is restricted in Google Cloud Console to the site's two addresses.
 - **App Check** (reCAPTCHA Enterprise) is enforced on Firestore and the Realtime Database, so they
   only answer the real site, not scripts or copies of it.
-- **Rules guard the data shapes.** Only table and match documents with valid codes can be touched,
+- **Rules guard paths and live fields.** Only table and match documents with valid codes can be touched,
   tables can't be listed (you need the code), and presence and chat entries are validated field by
-  field (a note is at most 80 characters, chat timestamps come from the server).
+  field (a note is at most 80 characters, chat timestamps come from the server). Game legality is
+  checked by the replay and transactions, rather than a separate authoritative game server.
 - GitHub secret scanning, push protection and Dependabot alerts are on.
 
 ## Caching and delivery
@@ -254,14 +302,18 @@ need HTTPS, so those only fully work on the deployed site.
 ```bash
 npx playwright install chromium   # once
 npm test                          # unit tests, then two browser "phones" play every game against the emulators
-HEADED=1 npm run test:e2e         # watch the phones play
+HEADED=1 npm run test:e2e          # watch the phones play
+DOC_SHOTS=1 node tests/e2e/phone-layout.mjs  # refresh README screenshots while npm start is running
 ```
 
 - `tests/unit/`: the game replays, Hues, Quickfire and Word Wheel rules (and every wheel's word list), the
-  stats, and table history, run in Node.
-  `replay.mjs` compares every replay function against recorded results.
+  stats, Word Slam race/dead-end rules, and table history, run in Node.
+  `replay.mjs` checks the older RPS, Connect Four, Battleships, Hues and Quickfire replay results
+  against a golden file. Word Wheel and Word Slam have their own rule and scenario tests.
 - `tests/e2e/`: Playwright drives two phones at 390×844 through full games of everything, saving
-  and quitting, chat, reconnecting and reloading. Screenshots land in `tests/e2e/screens/`.
+  and quitting, chat, reconnecting and reloading. `phone-layout.mjs` checks all main screens at
+  four phone sizes and prevents game feedback from leaking across matches. Screenshots land in
+  `tests/e2e/screens/` (ignored); selected README images live in `docs/screenshots/`.
 - `tests/visual/compare.mjs`: proves a CSS change renders identically (computed styles and pixels
   at three screen sizes). See its header for how to run it.
 
@@ -281,3 +333,9 @@ site key. After a deploy, phones pick up the new version the next time the app i
 in progress carry on, since the stored data doesn't change shape.
 
 Old tables are never cleaned up automatically; they're tiny.
+
+## Not implemented yet
+
+Guess Who? is still an idea, not a playable shelf game. Hiding secrets from developer tools needs
+per-seat authentication or server support. Background music and automatic cleanup of old tables
+are also future work; the current app has synthesised effects and keeps tables until they are cleared.

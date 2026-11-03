@@ -34,6 +34,7 @@ function c4State(m) {
 }
 
 function makeC4(box, ctx) {
+  const toast = (text, ms) => matchToast(m?.id, text, ms);
   const seat = G.seat, opp = other(seat), P = partnerName();
   let m = null, st = null, cell = null, pad = 0, W = 0, H = 0;
   let rendered = -1, animating = false, pending = false, pendingN = -1, endShown = false, dead = false;

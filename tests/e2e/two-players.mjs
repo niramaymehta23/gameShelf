@@ -329,7 +329,7 @@ try {
   check(/Hues [01] [01]/.test((await a.locator('.score-grid').innerText()).replace(/\s+/g, ' ')), 'score sheet has a Hues row with the win');
   check(!(await a.locator('.gbox.gw').count()), 'Guess Who? is off the shelf');
 
-  check(await a.locator('.gbox').count() === 5, 'five games on the shelf');
+  check(await a.locator('.gbox').count() === 6, 'six games on the shelf');
   check(await a.locator('.shelf-head .table-code').innerText().then((t) => t.replace(/\s/g, '')) === await state(a, 'G.code'), 'the table code sits by the names');
   check(await a.locator('.shelf-foot .foot-btn').count() === 3, 'three small buttons at the foot of the shelf');
   await snap(a, '24-shelf-four');

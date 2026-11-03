@@ -24,13 +24,14 @@ function tableStats(table, matches) {
 
   const s = {
     games: done.length, wins: seatsOf(() => 0), draws: 0, streak: { seat: null, n: 0 }, best: seatsOf(() => 0),
-    played: { c4: 0, bs: 0, hu: 0, qf: 0, ww: 0 }, split: {}, log: [],
+    played: { c4: 0, bs: 0, hu: 0, qf: 0, ww: 0, sl: 0 }, split: {}, log: [],
     rps: seatsOf(() => ({ rock: 0, paper: 0, scissors: 0, throws: 0, opener: { rock: 0, paper: 0, scissors: 0 }, tosses: 0 })),
     c4: seatsOf(() => ({ wins: 0, fewest: null, discs: 0, first: 0 })),
     bs: seatsOf(() => ({ wins: 0, shots: 0, hits: 0, best: null, fewest: null, run: 0 })),
     hu: seatsOf(() => ({ wins: 0, fewest: null, pickup: 0, callouts: 0, hues: 0 })),
     qf: seatsOf(() => ({ wins: 0, rounds: 0, word: null, sum: null, answers: 0, ms: 0, gaveUp: 0 })),
     ww: seatsOf(() => ({ wins: 0, words: 0, longest: null, nines: 0 })),
+    sl: seatsOf(() => ({ wins: 0, cards: 0, blanks: 0, passes: 0, fewest: null })),
   };
 
   // wins and streaks: a draw ends the run
@@ -124,6 +125,18 @@ const STATS_GAME = {
     rec[st.winner].wins++;
     const lose = st.score[other(st.winner)];
     return `${st.score[st.winner]}–${lose} in ${QF_MODES[st.setup.mode].name}`;
+  },
+  sl(m, rec) {
+    const st = slState(m);
+    for (const e of st.log) {
+      if (e.k === 'pass') rec[e.by].passes++;
+      else { rec[e.by].cards++; if (SL_CARDS[e.id] === '*') rec[e.by].blanks++; }
+    }
+    if (!st.winner) return '';
+    if (st.winner !== 'draw') {
+      const r = rec[st.winner]; r.wins++; r.fewest = lowest(r.fewest, st.log.filter((e) => e.by === st.winner && e.k === 'play').length);
+    }
+    return st.reason === 'empty' ? `all ten cards played${st.race && st.refreshes ? `, ${st.refreshes} fresh ${st.refreshes === 1 ? 'word' : 'words'}` : ''}, ending on ${st.word}` : `${st.hands.host.length}–${st.hands.guest.length} cards left, blocked on ${st.word}`;
   },
   ww(m, rec) {
     const st = wwState(m);
@@ -281,6 +294,14 @@ function statsView(s) {
       ['Nine-letter words', (x) => s.ww[x].nines, statsNum, 'hi'],
     ]), best ? h('p', { class: 'stats-foot' }, `Longest word: ${s.ww[best].longest.w}, by ${best === me ? 'you' : P}.`) : ''));
   }
+
+  if (s.played.sl) out.push(section('Word Slam', duels([
+    ['Wins', (x) => s.sl[x].wins, statsNum, 'hi'],
+    ['Cards played', (x) => s.sl[x].cards, statsNum, 'hi'],
+    ['Blanks played', (x) => s.sl[x].blanks, statsNum],
+    ['Times stuck', (x) => s.sl[x].passes, statsNum],
+    ['Fewest cards to win', (x) => s.sl[x].fewest, statsNum, 'lo'],
+  ])));
 
   const day = (at) => (at ? new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '');
   out.push(section('The log', h('ol', { class: 'stats-log' }, ...s.log.map((g) => h('li', { class: g.w === me ? 'me' : g.w === them ? 'them' : 'draw' },

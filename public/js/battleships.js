@@ -168,13 +168,14 @@ function makeBS(box, ctx) {
       const st = bsState(m);
       const want = (st.ready.host && st.ready.guest) ? 'battle' : 'place';
       if (want !== subName) {
+        const enteringBattle = subName === 'place' && want === 'battle';
         sub && sub.destroy();
         box.replaceChildren();
         const inner = h('div', { class: 'phase-box' });
         box.append(inner);
         subName = want;
         sub = want === 'place' ? makePlacement(inner) : makeBattle(inner);
-        if (want === 'battle') { Sound.ding(); toast('Both fleets are hidden. Battle stations!'); }
+        if (enteringBattle) { Sound.ding(); matchToast(m.id, 'Both fleets are hidden. Battle stations!'); }
       }
       sub.update(m);
     },
@@ -186,6 +187,7 @@ function makeBS(box, ctx) {
 
 // ---------------- placing the fleet ----------------
 function makePlacement(box) {
+  const toast = (text, ms) => matchToast(m?.id, text, ms);
   const seat = G.seat, opp = other(seat), P = partnerName();
   const draftKey = 'draft:' + G.matchId;
   let m = null, st = null, dead = false, locked = false, saving = false, selected = null, drag = null;
@@ -379,6 +381,7 @@ function makePlacement(box) {
 
 // ---------------- the battle ----------------
 function makeBattle(box) {
+  const toast = (text, ms) => matchToast(m?.id, text, ms);
   const seat = G.seat, opp = other(seat), P = partnerName();
   let m = null, st = null, dead = false, rendered = -1, animating = false, pending = false, pendingN = -1, endShown = false;
   let view = null, manual = false, aim = null, viewTimer = null;
