@@ -8,21 +8,28 @@ count_1w.txt Peter Norvig's English word counts: which words are everyday. The n
              wheel is always an everyday one, and each wheel's list is sorted most common first, so
              the words shown after a game are the ones you'd kick yourself for missing.
 
-A wheel is a nine-letter word's letters: one in the middle, eight round it (scrambled). Its words are
-the puzzle's rules: four or more letters, the middle letter in every one, each wheel letter used at
-most once, no plurals (an -s, -es or -ies form of another word is dropped). A wheel is kept when it
-has 20 to 80 words, at least 12 of them everyday (first to five must always be winnable), and no
-word from make_words.BLOCK fits it. No two wheels share their letters. Seeded, so it rebuilds the same."""
-import os, random, sys
+A wheel is a nine-letter word's letters, scrambled round a circle (no middle letter). Its words are the
+puzzle's rules: four or more letters made from the wheel, each letter used at most as many times as
+it's on the wheel (two As on the wheel, two As in a word), no plurals (an -s, -es or -ies form of
+another word is dropped). Words from make_words.BLOCK still count but go to the end of the list, so
+they're never a hint or shown after a game.
+
+A match stores its wheel as an index, so the wheels already in the output keep their letters and their
+place, and only their word lists are worked out again; new wheels (WHEELS raised) are appended. A new
+wheel has 40 to 200 words, at least 12 of them everyday (first to five must always be winnable), and no
+two wheels share their letters. Seeded, so it rebuilds the same.
+
+(Until November 2026 a wheel had a middle letter every word needed, stored as {c, o}. Reading an
+output of that kind, the nine letters are scrambled once into `l`, and the old list is checked to be
+inside the new one, so finished games replay the same.)"""
+import os, random, re, sys
 from collections import Counter
 
 sys.path.insert(0, os.path.dirname(__file__))
 from make_words import BLOCK, COMMON  # noqa: E402
 
 WHEELS = 100
-MIN_WORDS, MAX_WORDS, MIN_EVERYDAY = 20, 80, 12
-TARGET = 40          # of the middle letters a wheel could have, the one nearest this many words wins
-PER_CENTRE = 10      # at most this many wheels with the same middle letter
+MIN_WORDS, MAX_WORDS, MIN_EVERYDAY = 40, 200, 12  # for a new wheel
 SEED = 20261029
 NINE_COMMON = 30000  # the nine-letter word is commoner than the everyday cut-off: a word you'd know
 
@@ -31,6 +38,19 @@ def plural(w, legal):
     if not w.endswith('s') or w.endswith('ss'):
         return False
     return w[:-1] in legal or (w.endswith('es') and w[:-2] in legal) or (w.endswith('ies') and w[:-3] + 'y' in legal)
+
+
+def existing(out):
+    """The wheels already built, in order: (letters as laid out, or None for an old wheel; the nine
+    letters; the old word list or None)."""
+    if not os.path.exists(out):
+        return []
+    src = open(out).read()
+    new = re.findall(r"\{ l: '([A-Z]{9})',", src)
+    if new:
+        return [(l.lower(), l.lower(), None) for l in new]
+    old = re.findall(r"\{ c: '([A-Z])', o: '([A-Z]{8})', nine: '[A-Z ]+', words: '([A-Z ]+)' \}", src)
+    return [(None, (c + o).lower(), set(ws.lower().split())) for c, o, ws in old]
 
 
 def main(enable, counts, out='public/js/wheels.js'):
@@ -43,54 +63,57 @@ def main(enable, counts, out='public/js/wheels.js'):
     everyday = lambda w: rank.get(w, 1e9) < COMMON and w not in BLOCK  # noqa: E731
     counted = [(w, Counter(w)) for w in words]
 
+    def allowed(letters):
+        have = Counter(letters)
+        ws = [w for w, c in counted if not c - have]
+        ws.sort(key=lambda w: (w in BLOCK, rank.get(w, 1e9), w))
+        return ws
+
     rnd = random.Random(SEED)
+    wheels, seen = [], set()
+    for laid, letters, old in existing(out):
+        ws = allowed(letters)
+        if old is not None:
+            assert old <= set(ws), f'{letters}: {sorted(old - set(ws))} would stop counting'
+        if laid is None:
+            laid = list(letters)
+            random.Random(f'{SEED}:{letters}').shuffle(laid)
+            laid = ''.join(laid)
+        wheels.append({'l': laid, 'words': ws})
+        seen.add(''.join(sorted(letters)))
+
     nines = sorted(w for w in words if len(w) == 9 and everyday(w) and rank[w] < NINE_COMMON)
     rnd.shuffle(nines)
-    wheels, seen, centres = [], set(), Counter()
     for nine in nines:
-        if len(wheels) == WHEELS:
+        if len(wheels) >= WHEELS:
             break
         key = ''.join(sorted(nine))
         if key in seen:
             continue
-        have = Counter(nine)
-        fit = [w for w, c in counted if not c - have]
-        best = None
-        for c in sorted(set(nine)):
-            if centres[c] >= PER_CENTRE:
-                continue
-            ws = [w for w in fit if c in w]
-            if not MIN_WORDS <= len(ws) <= MAX_WORDS or sum(map(everyday, ws)) < MIN_EVERYDAY or any(w in BLOCK for w in ws):
-                continue
-            if best is None or abs(len(ws) - TARGET) < abs(len(best[1]) - TARGET):
-                best = (c, ws)
-        if not best:
+        ws = allowed(nine)
+        if not MIN_WORDS <= len(ws) <= MAX_WORDS or sum(map(everyday, ws)) < MIN_EVERYDAY:
             continue
-        c, ws = best
-        outer = list(nine)
-        outer.remove(c)
-        rnd.shuffle(outer)
-        ws.sort(key=lambda w: (rank.get(w, 1e9), w))
-        wheels.append({'c': c, 'o': ''.join(outer), 'nine': [w for w in ws if len(w) == 9], 'words': ws})
+        laid = list(nine)
+        rnd.shuffle(laid)
+        wheels.append({'l': ''.join(laid), 'words': ws})
         seen.add(key)
-        centres[c] += 1
-    assert len(wheels) == WHEELS, f'only {len(wheels)} wheels'
+    assert len(wheels) >= WHEELS, f'only {len(wheels)} wheels'
 
     lines = ['\'use strict\';',
              '// GENERATED by tools/make_wheels.py from ENABLE (public domain) and Norvig\'s word counts.',
-             '// WW_WHEELS[n] = {c: the middle letter, o: the eight round it, nine: the nine-letter word(s),',
-             '// words: every word the wheel allows, most common first}. Upper case, words space-separated.',
+             '// WW_WHEELS[n] = {l: the nine letters round the wheel, nine: the nine-letter word(s), words: every',
+             '// word the wheel allows, most common first}. Upper case, words space-separated. Only ever append.',
              'const WW_WHEELS = [']
     for x in wheels:
-        c, o, nine, ws = x['c'].upper(), x['o'].upper(), ' '.join(x['nine']).upper(), ' '.join(x['words']).upper()
-        lines.append(f"  {{ c: '{c}', o: '{o}', nine: '{nine}', words: '{ws}' }},")
+        nine = ' '.join(w for w in x['words'] if len(w) == 9).upper()
+        lines.append(f"  {{ l: '{x['l'].upper()}', nine: '{nine}', words: '{' '.join(x['words']).upper()}' }},")
     lines.append('];')
     with open(out, 'w') as f:
         f.write('\n'.join(lines) + '\n')
     sizes = [len(x['words']) for x in wheels]
     print(f'{out}: {len(wheels)} wheels, {min(sizes)}-{max(sizes)} words (mean {sum(sizes) / len(sizes):.0f}), '
-          f'{os.path.getsize(out) // 1024} KB; middles {dict(sorted(centres.items()))}')
+          f'{os.path.getsize(out) // 1024} KB')
 
 
 if __name__ == '__main__':
-    main(*sys.argv[1:3])
+    main(*sys.argv[1:4])

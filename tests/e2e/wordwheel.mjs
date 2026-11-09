@@ -1,7 +1,8 @@
 // Word Wheel on two phones against the emulators: the RPS winner spins, both phones get the same
 // wheel, words are made by swiping across the letters (real pointer moves, routed round the rim so
-// they don't brush other letters), sliding back takes a letter off, short words, words without the
-// middle letter, non-words and your own words again are refused without being written, the partner's
+// they don't brush other letters), sliding back takes a letter off, the keyboard can't use a letter
+// more often than it's on the wheel, short words, non-words and your own words again are refused
+// without being written, the partner's
 // words show as stars until the end (and can still be found), the keyboard types too, and the first to
 // five wins on both phones with the result recorded. Hints open at three words (two letters a game);
 // in a rematch the loser of RPS gives up, and the other wins on both phones.
@@ -13,16 +14,15 @@ const snap = (p, name) => shot(p, name, 350);
 const ok = (msg) => console.log('  ok ' + msg);
 const finds = (p) => p.evaluate(() => Object.keys(G.match.finds || {}).length);
 const status = (p) => p.locator('.ww-status').innerText();
-const wheelOf = (p) => p.evaluate(() => { const w = wwState(G.match).wheel; return { c: w.c, o: w.o, words: [...w.words] }; });
+const wheelOf = (p) => p.evaluate(() => { const w = wwState(G.match).wheel; return { l: w.l, words: [...w.words] }; });
 const lettersOn = (p) => p.evaluate(() => [...document.querySelectorAll('.ww-l')].map((el) => el.textContent).sort().join(''));
 
 // Swipes `word` across the wheel: down on its first letter, then to each next one by going out to the
-// rim, round it, and back in (to the middle, in along a spoke), so the finger never crosses a letter it
-// doesn't mean. `back` slides onto these letters and back off first (to check undoing).
+// rim, round it, and back in, so the finger never crosses a letter it doesn't mean. `back` slides onto these letters and back off first (to check undoing).
 async function swipe(p, word, { back = '', hold = false } = {}) {
   const g = await p.evaluate((w) => {
     const els = [...document.querySelectorAll('.ww-l')], r = document.querySelector('.ww-wheel').getBoundingClientRect(), used = new Set();
-    const at = (ch) => { const i = [8, 0, 1, 2, 3, 4, 5, 6, 7].find((k) => els[k].textContent === ch && !used.has(k)); used.add(i); const e = els[i].getBoundingClientRect(); return [e.x + e.width / 2, e.y + e.height / 2]; };
+    const at = (ch) => { const i = els.findIndex((el, k) => el.textContent === ch && !used.has(k)); used.add(i); const e = els[i].getBoundingClientRect(); return [e.x + e.width / 2, e.y + e.height / 2]; };
     return { pts: [...w].map(at), cx: r.x + r.width / 2, cy: r.y + r.height / 2, S: r.width };
   }, word + back);
   const { cx, cy, S } = g, rim = S * 0.45;
@@ -34,11 +34,9 @@ async function swipe(p, word, { back = '', hold = false } = {}) {
     const n = Math.max(1, Math.ceil(Math.abs(d) / 0.15));
     for (let k = 1; k <= n; k++) await go(xy(rim, from + (d * k) / n));
   }
-  const spoke = (ang) => Math.round((ang + Math.PI / 2) / (Math.PI / 4)) * (Math.PI / 4) - Math.PI / 2;
   async function hop(from, to) {
-    const [r0, a0] = polar(from), [r1, a1] = polar(to);
-    const out = r0 < 5 ? spoke(a1) : a0, inn = r1 < 5 ? spoke(a0) : a1;
-    await go(xy(rim, out)); await round(out, inn); await go(r1 < 5 ? [cx, cy] : to);
+    const a0 = polar(from)[1], a1 = polar(to)[1];
+    await go(xy(rim, a0)); await round(a0, a1); await go(to);
   }
   const pts = g.pts.slice(0, word.length), extra = g.pts.slice(word.length);
   await go(pts[0]); await p.mouse.down();
@@ -75,27 +73,31 @@ try {
   await Promise.all([a, b].map((p) => until(p, () => document.querySelector('.ww-wheel') && !/Spinning/.test(document.querySelector('.ww-status').textContent))));
   assert.equal(await lettersOn(a), await lettersOn(b), 'the same nine letters on both phones');
   const wheel = await wheelOf(a);
-  assert.equal(await lettersOn(a), [...wheel.c + wheel.o].sort().join(''));
-  ok(`A spun wheel ${await a.evaluate(() => G.match.ww.n)}: ${wheel.c} in the middle of ${wheel.o}, ${wheel.words.length} words`);
+  assert.equal(await lettersOn(a), [...wheel.l].sort().join(''));
+  assert.equal(await a.locator('.ww-l.mid').count(), 0, 'no middle letter: all nine are on the ring');
+  assert.equal(await status(a), 'Four letters or more, each letter once');
+  ok(`A spun wheel ${await a.evaluate(() => G.match.ww.n)}: ${wheel.l}, ${wheel.words.length} words`);
 
   // ---- refusals: nothing is written ----
-  await swipe(a, wheel.c + wheel.o.slice(0, 2));
+  await swipe(a, wheel.l.slice(0, 3));
   assert.equal(await status(a), 'Four letters or more');
-  const noMiddle = [...wheel.o].filter((ch) => ch !== wheel.c).slice(0, 4).join('');
-  await swipe(a, noMiddle);
-  assert.equal(await status(a), `Every word needs the middle ${wheel.c}`);
+  // the keyboard can't use a letter more often than it's on the wheel
+  const once = [...wheel.l].find((ch) => wheel.l.indexOf(ch) === wheel.l.lastIndexOf(ch));
+  await a.keyboard.type(once.toLowerCase().repeat(2));
+  assert.equal(await a.locator('.ww-word .tile').allInnerTexts().then((t) => t.join('')), once, `a second ${once} isn’t on the wheel`);
+  await a.keyboard.press('Escape');
   let junkWord = null;
-  for (let i = 0; i < 8 && !junkWord; i++) { const w = wheel.c + wheel.o.slice(i) + wheel.o.slice(0, i); for (const n of [4, 5]) if (!wheel.words.includes(w.slice(0, n)) && !/[^S]S$/.test(w.slice(0, n))) { junkWord = w.slice(0, n); break; } }
+  for (let i = 0; i < 9 && !junkWord; i++) { const w = wheel.l.slice(i) + wheel.l.slice(0, i); for (const n of [4, 5]) if (!wheel.words.includes(w.slice(0, n)) && !/[^S]S$/.test(w.slice(0, n))) { junkWord = w.slice(0, n); break; } }
   await swipe(a, junkWord);
   assert.equal(await status(a), `${junkWord} isn’t a word here`);
   assert.equal(await a.locator('.ww-word .tile.wrong').count(), junkWord.length, 'the refused word stays on the tiles while the note is up');
   await snap(a, 'ww-03-refused');
   assert.equal(await finds(a), 0);
-  ok('short, no-middle and non-words are refused and never written');
+  ok('short words, a letter used too often and non-words are refused and never written');
 
   // ---- a word by swiping, sliding back over one letter first ----
   const w1 = await fresh(a);
-  await swipe(a, w1, { back: [...wheel.c + wheel.o].find((ch) => !w1.includes(ch)) || '', hold: true });
+  await swipe(a, w1, { back: [...wheel.l].find((ch) => !w1.includes(ch)) || '', hold: true });
   assert.equal(await a.locator('.ww-word .tile').allInnerTexts().then((t) => t.join('')), w1, 'sliding back took the extra letter off');
   assert.ok((await a.evaluate(() => document.querySelector('.ww-trail polyline').getAttribute('points').split(' ').length)) > w1.length, 'the trail runs on to the finger');
   await snap(a, 'ww-04-swiping');
@@ -146,7 +148,7 @@ try {
   await sleep(600);
   assert.equal(await finds(a), 3, 'nothing is written before the partner is back');
   await sheetBtn(b, 'Carry on');
-  await Promise.all([a, b].map((p) => until(p, () => /middle/.test(document.querySelector('.ww-status')?.textContent || ''))));
+  await Promise.all([a, b].map((p) => until(p, () => /each letter once/.test(document.querySelector('.ww-status')?.textContent || ''))));
   assert.equal(await theirList(b).count(), 1, 'the saved finds are back');
   ok('a saved game carries on, and can’t be played until both are back');
 

@@ -510,22 +510,23 @@ WW_STROKES = {  # letters as ink strokes in a -1..1 box
 
 def box_ww(W=360, H=480):
     s = Sheet(W, H)
-    cx, cy, R, r = 180, 236, 150, 46
+    cx, cy, R, r = 180, 236, 150, 34
     s.wash(rrect(W, H, 8, 8, W - 8, H - 8, 10) & ~disk(W, H, cx, cy, R + 6), (96, 132, 104), strength=0.92, bloom=0.42, edge=0.7, gran=0.3, rough=0.05)
     s.wash(disk(W, H, cx, cy, R), (244, 234, 212), strength=0.3, bloom=0.5, rough=0.06)
     s.wash(disk(W, H, cx, cy, r), OCHRE, strength=0.75, edge=1.1, rough=0.08)
-    spokes = [[(cx + r * math.cos(a), cy + r * math.sin(a)), (cx + R * math.cos(a), cy + R * math.sin(a))] for a in (i * math.pi / 4 - math.pi / 2 for i in range(8))]
+    # nine letters round the rim, one between each two spokes, and nothing in the middle
+    step = 2 * math.pi / 9
+    spokes = [[(cx + r * math.cos(a), cy + r * math.sin(a)), (cx + R * math.cos(a), cy + R * math.sin(a))] for a in (i * step - math.pi / 2 for i in range(9))]
     s.ink([circle_path(cx, cy, R), circle_path(cx, cy, r)] + spokes, width=2.4)
-    spot = lambda i: (cx + 100 * math.cos(i * math.pi / 4 - 3 * math.pi / 8), cy + 100 * math.sin(i * math.pi / 4 - 3 * math.pi / 8))  # noqa: E731
-    # the red pencil: W in the middle, then H, E, E, L round the wheel
-    trail = [(cx, cy)] + [spot(i) for i in (7, 0, 1, 2)]
-    s.wash(np.logical_or.reduce([disk(W, H, x, y, 26) for x, y in trail]), OCHRE, strength=0.35, rough=0.1)
+    spot = lambda i: (cx + 104 * math.cos(i * step - math.pi / 2 + step / 2), cy + 104 * math.sin(i * step - math.pi / 2 + step / 2))  # noqa: E731
+    # the red pencil: W, H, E, E, L round the wheel
+    trail = [spot(i) for i in (8, 0, 1, 2, 3)]
+    s.wash(np.logical_or.reduce([disk(W, H, x, y, 24) for x, y in trail]), OCHRE, strength=0.35, rough=0.1)
     s.ink([trail], width=7, color=RED, alpha=0.55, wobble=2)
     def letter(ch, x, y, size):
         s.ink([[(x + px * size, y + py * size) for px, py in stroke] for stroke in WW_STROKES[ch]], width=size * 0.32)
-    letter('W', cx, cy, 20)
-    for i, ch in enumerate('EELTANIH'):
-        letter(ch, *spot(i), 15)
+    for i, ch in enumerate('HEELTANIW'):
+        letter(ch, *spot(i), 14)
     splatter(s, OCHRE, 7, (30, 20, 330, 70), 5)
     splatter(s, RED, 5, (30, 410, 330, 460), 4)
     save_rgba(s.rgba(), 'box-ww.png')

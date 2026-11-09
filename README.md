@@ -73,10 +73,11 @@ The dot under your partner's name tells you where they are: **green** on the sam
   67 − 24. Play Words, Sums, or Mixed. Each phone times its own player from the moment the puzzle
   appears on *that* screen, so a slow connection never costs you a round. Answers go the moment
   they're long enough, and a wrong one clears so you can try again straight away.
-- **Word Wheel.** Like the newspaper puzzle: nine letters on a wheel, one in the middle. The rock,
+- **Word Wheel.** Nine letters round a wheel, no middle letter. The rock,
   paper, scissors winner spins it, and you both race on the same wheel. Put a finger on a letter and
-  swipe across the others to make a word, then let go. Four letters or more, every word needs the
-  middle letter, each letter once, no plurals. You each find your own words (both can find the same
+  swipe across the others to make a word, then let go. Any word of four letters or more from the
+  wheel's letters, each letter as many times as it's on the wheel (two As there, two As in a word),
+  no plurals. You each find your own words (both can find the same
   one), and your partner's words show only as stars, one a letter, until the race is over. First
   to five wins. There are 100 wheels, each with a nine-letter word hidden in it, and every word each
   one allows is worked out in advance, so a wrong word is refused at once.

@@ -1,12 +1,15 @@
 'use strict';
-// ================= Word Wheel: nine letters, one in the middle, first to five words =================
+// ================= Word Wheel: nine letters round a wheel, first to five words =================
 // The rock, paper, scissors winner spins the wheel once: match.ww = {by, n}, n an index into WW_WHEELS
 // (public/js/wheels.js, built by tools/make_wheels.py with every word each wheel allows). Then both
 // phones race on the same wheel, each finding words for themselves: both can find the same word, and
 // neither sees the other's words (only one star per letter) until the race is over. A word is claimed by
 // appending match.finds.fNNN = {by, w} in a transaction that checks the latest replay, so a quick double
 // send can't count twice. wwState(m) replays the finds in key order: a word counts once per player, only
-// if it's in the wheel's list; the first to WW_TO wins. Giving up is a find too, {by, up: true}: the
+// if it's in the wheel's list; the first to WW_TO wins. There's no middle letter: a word is any four or
+// more of the nine, each as many times as it's on the wheel (a swipe can't pick the same letter twice).
+// Wheels from before that (with a middle letter) kept their letters and grew their lists, so their
+// finished and saved games replay the same. Giving up is a find too, {by, up: true}: the
 // other player wins there and then. Wrong words are refused on the phone and never written. Hints
 // (from WW_CLUE_AT words, WW_CLUES letters a game) are only on the phone that asked, never written.
 // Nothing derived is stored.
@@ -20,7 +23,7 @@ const wwCache = [];
 function wwWheel(n) {
   if (!wwCache[n]) {
     const x = WW_WHEELS[n], words = x.words.split(' ');
-    wwCache[n] = { n, c: x.c, o: x.o, nine: x.nine.split(' '), words, set: new Set(words) };
+    wwCache[n] = { n, l: x.l, nine: x.nine.split(' '), words, set: new Set(words) };
   }
   return wwCache[n];
 }
@@ -61,15 +64,22 @@ function wwState(m) {
   }
   return st;
 }
-// Why `seat` can't claim this word ({k: 'short' | 'middle' | 'plural' | 'word' | 'found'}), or null.
+// Why `seat` can't claim this word ({k: 'short' | 'letters' | 'plural' | 'word' | 'found'}), or null:
+// 'letters' is one the wheel can't make (a letter it hasn't got, or more of one than it has).
 // The partner having it doesn't matter: each player finds their own.
 function wwRefusal(st, w, seat) {
   const x = st.wheel;
   if (w.length < WW_MIN) return { k: 'short' };
-  if (!w.includes(x.c)) return { k: 'middle' };
+  if (!wwMakes(x.l, w)) return { k: 'letters' };
   if (st.found[seat].has(w)) return { k: 'found' };
   if (!x.set.has(w)) return { k: /[^S]S$/.test(w) && x.set.has(w.slice(0, -1)) ? 'plural' : 'word' };
   return null;
+}
+// Can these letters make `w`, each used at most as often as it's there?
+function wwMakes(letters, w) {
+  const left = [...letters];
+  for (const ch of w) { const i = left.indexOf(ch); if (i < 0) return false; left.splice(i, 1); }
+  return true;
 }
 // The word a hint is about: the most everyday word (the lists go most common first) of six letters or
 // fewer that `seat` hasn't found yet.
@@ -103,20 +113,22 @@ function makeWWSpin(box) {
 }
 
 // ---------- the race ----------
-// The wheel is drawn in a 100 × 100 box: the middle letter at the centre, the other eight on a circle
-// of radius WW_R between the spokes. A finger picks a letter when it comes within WW_HIT of it, close
-// enough to be easy and far enough that a swipe can pass between two letters without picking either.
-const WW_R = 31, WW_HIT = 8.5, WW_HIT_MID = 10, WW_GRAB = 15;
-// place 0 is just right of the top spoke, then clockwise; place 8 is the middle
-const wwSpot = (place) => (place === 8 ? [50, 50] : [50 + WW_R * Math.cos((place * 45 - 67.5) * Math.PI / 180), 50 + WW_R * Math.sin((place * 45 - 67.5) * Math.PI / 180)]);
+// The wheel is drawn in a 100 × 100 box: nine letters on a circle of radius WW_R, one between each two
+// spokes, round a painted hub with nothing on it. A finger picks a letter when it comes within WW_HIT of
+// it, close enough to be easy and far enough that a swipe can pass between two letters (or across the
+// hub) without picking either.
+const WW_N = 9, WW_R = 33, WW_HUB = 11, WW_HIT = 8.5, WW_GRAB = 15;
+const WW_STEP = 360 / WW_N;
+// place 0 is just right of the top spoke, then clockwise
+const wwSpot = (place) => { const a = (place * WW_STEP - 90 + WW_STEP / 2) * Math.PI / 180; return [50 + WW_R * Math.cos(a), 50 + WW_R * Math.sin(a)]; };
 
 function makeWW(box, ctx) {
   const seat = G.seat, opp = other(seat), P = partnerName();
   let m = null, st = null, dead = false, over = false, spinning = false;
   let settling = 0;                    // until then the letters are still sliding after a Shuffle: no new swipe
   let seen = -1;                       // finds already announced
-  let order = [0, 1, 2, 3, 4, 5, 6, 7]; // which outer letter sits in which place (Shuffle changes it)
-  let path = [];                       // letter indexes (0–7 outer, 8 the middle) of the word being made
+  let order = [...Array(WW_N).keys()]; // which letter sits in which place (Shuffle changes it)
+  let path = [];                       // letter indexes (0–8) of the word being made: each once
   let drag = null, finger = null, last = null;
   let flash = '', flashTimer = null, wrong = ''; // wrong: a refused word, shown on the tiles while its note is up
   const pending = new Set();           // words sent, not yet back
@@ -128,10 +140,10 @@ function makeWW(box, ctx) {
     h('div', { class: 'sb-side right' }, h('div', { class: 'sb-name' }, P), scoreThem));
   const word = h('div', { class: 'rack ww-word', 'aria-live': 'polite' });
   const trail = svgEl('<svg class="ww-trail" viewBox="0 0 100 100" aria-hidden="true"><polyline points=""/></svg>');
-  const letters = Array.from({ length: 9 }, (_, i) => h('span', { class: 'ww-l' + (i === 8 ? ' mid' : '') }));
+  const letters = Array.from({ length: WW_N }, () => h('span', { class: 'ww-l' }));
   const wheel = h('div', { class: 'ww-wheel', role: 'group', 'aria-label': 'The wheel: swipe across the letters' },
-    svgEl('<svg class="ww-lines" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="48"/><circle class="mid" cx="50" cy="50" r="15.5"/>'
-      + Array.from({ length: 8 }, (_, i) => { const a = (i * 45 - 90) * Math.PI / 180; return `<line x1="${50 + 15.5 * Math.cos(a)}" y1="${50 + 15.5 * Math.sin(a)}" x2="${50 + 48 * Math.cos(a)}" y2="${50 + 48 * Math.sin(a)}"/>`; }).join('') + '</svg>'),
+    svgEl(`<svg class="ww-lines" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="48"/><circle class="hub" cx="50" cy="50" r="${WW_HUB}"/>`
+      + Array.from({ length: WW_N }, (_, i) => { const a = (i * WW_STEP - 90) * Math.PI / 180; return `<line x1="${50 + WW_HUB * Math.cos(a)}" y1="${50 + WW_HUB * Math.sin(a)}" x2="${50 + 48 * Math.cos(a)}" y2="${50 + 48 * Math.sin(a)}"/>`; }).join('') + '</svg>'),
     ...letters, trail);
   const shuffleBtn = h('button', { class: 'icon-btn ww-tool ww-shuffle', html: ICON.shuffle, 'aria-label': 'Shuffle the letters', onclick: shuffle });
   const clueBtn = h('button', { class: 'icon-btn ww-tool ww-clue', html: ICON.bulb, 'aria-label': 'A hint', onclick: clue });
@@ -147,9 +159,9 @@ function makeWW(box, ctx) {
 
   const say = (text) => status.replaceChildren(text);
   function note(text, ms = 1800) { flash = text; clearTimeout(flashTimer); flashTimer = setTimeout(() => { flash = wrong = ''; paint(); }, ms); paint(); }
-  const letterAt = (i) => (i === 8 ? st.wheel.c : st.wheel.o[i]);
+  const letterAt = (i) => st.wheel.l[i];
   const typed = () => path.map(letterAt).join('');
-  const spot = (i) => wwSpot(i === 8 ? 8 : order.indexOf(i));
+  const spot = (i) => wwSpot(order.indexOf(i));
 
   // ---- finding letters under a finger ----
   function point(e) {
@@ -158,11 +170,11 @@ function makeWW(box, ctx) {
   }
   function nearest([x, y], grab) {
     let best = null, bd = Infinity;
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < WW_N; i++) {
       const [sx, sy] = spot(i), d = Math.hypot(x - sx, y - sy);
       if (d < bd) { bd = d; best = i; }
     }
-    return bd <= (grab ? WW_GRAB : best === 8 ? WW_HIT_MID : WW_HIT) ? best : null;
+    return bd <= (grab ? WW_GRAB : WW_HIT) ? best : null;
   }
   function visit(i) {
     if (i == null) return;
@@ -208,7 +220,7 @@ function makeWW(box, ctx) {
     else if (e.key === 'Backspace') { path.pop(); paint(); }
     else if (e.key === 'Escape') { path = []; paint(); }
     else if (/^[a-z]$/i.test(e.key)) {
-      const ch = e.key.toUpperCase(), free = [8, 0, 1, 2, 3, 4, 5, 6, 7].find((i) => letterAt(i) === ch && !path.includes(i));
+      const ch = e.key.toUpperCase(), free = order.find((i) => letterAt(i) === ch && !path.includes(i));
       if (free == null) { shake(word, 5); return; }
       path.push(free); flash = wrong = ''; Sound.tap(); paint();
     } else return;
@@ -227,7 +239,7 @@ function makeWW(box, ctx) {
     Sound.lose(); vibrate(20); shake(word, 7);
     wrong = w;
     note(no.k === 'short' ? 'Four letters or more'
-      : no.k === 'middle' ? `Every word needs the middle ${st.wheel.c}`
+      : no.k === 'letters' ? 'Each letter only as often as it’s on the wheel'
       : no.k === 'found' ? `You already have ${w}`
       : no.k === 'plural' ? `No plurals: ${w} doesn’t count`
       : no.k === 'sent' ? `Already sending ${w}…`
@@ -290,7 +302,7 @@ function makeWW(box, ctx) {
     } catch (e) { if (!dead) { Sound.lose(); note(writeError(e, 'Couldn’t give up. Try again.'), 2400); } }
   }
 
-  // ---- shuffling: the outer letters swap places (on this phone only) ----
+  // ---- shuffling: the letters swap places (on this phone only) ----
   function shuffle() {
     if (!canPlay()) return;
     Sound.whoosh();
@@ -338,7 +350,7 @@ function makeWW(box, ctx) {
     clueBtn.dataset.left = WW_CLUES - hint.used;
     if (over) return;
     paintWord();
-    say(flash || (spinning ? 'Spinning…' : !theyreIn() ? `Waiting for ${P} to join…` : path.length ? 'Let go to send it' : `Every word needs the middle ${st.wheel.c}`));
+    say(flash || (spinning ? 'Spinning…' : !theyreIn() ? `Waiting for ${P} to join…` : path.length ? 'Let go to send it' : 'Four letters or more, each letter once'));
   }
 
   // ---- what the other phone did ----

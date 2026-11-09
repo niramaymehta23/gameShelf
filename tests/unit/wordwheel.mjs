@@ -57,6 +57,15 @@ test('a hint is about the most everyday word of six letters or fewer that you ha
   assert.equal(W.wwClueWord(st, 'host'), short.find((w) => w !== words[0]));
 });
 
+test('no middle letter: any word from the wheel counts, a doubled letter twice', () => {
+  // CONDEMNED: NEED and DEED use its two Es (and two Ds), and none of them needs the old middle D
+  const n = W.WW_WHEELS.findIndex((x) => x.nine.split(' ').includes('CONDEMNED'));
+  const st = W.wwState(game([['host', 'NEED'], ['host', 'NEON'], ['host', 'COME'], ['guest', 'DEED'], ['guest', 'MOOD']], { by: 'host', n }));
+  assert.deepEqual(scored(st), ['host:NEED', 'host:NEON', 'host:COME', 'guest:DEED']);
+  assert.equal(W.wwRefusal(st, 'ONCE', 'guest'), null);
+  assert.equal(W.wwRefusal(st, 'MOOD', 'guest').k, 'letters');
+});
+
 test('only the RPS winner can spin, and only a real wheel', () => {
   assert.equal(W.wwState(game([['host', words[0]]], { by: 'guest', n: WHEEL })).setup, null);
   for (const bad of [-1, 100, 2.5, '3', null]) assert.equal(W.wwSetup(game([], { by: 'host', n: bad })), null);
@@ -65,20 +74,22 @@ test('only the RPS winner can spin, and only a real wheel', () => {
   assert.equal(st.wheel.n, 99); assert.ok(st.wheel.set.size >= 20);
 });
 
-test('refusals: too short, no middle letter, plural, not a word, already yours', () => {
+test('refusals: too short, letters the wheel hasn’t got, plural, not a word, already yours', () => {
   const st = W.wwState(game([['guest', words[0]]]));
-  const x = st.wheel, noMid = [...x.o].filter((c) => c !== x.c).join('').slice(0, 4);
-  assert.deepEqual({ ...W.wwRefusal(st, x.c + x.o.slice(0, 2), 'host') }, { k: 'short' });
-  assert.deepEqual({ ...W.wwRefusal(st, noMid, 'host') }, { k: 'middle' });
+  const x = st.wheel, missing = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].find((c) => !x.l.includes(c));
+  assert.deepEqual({ ...W.wwRefusal(st, x.l.slice(0, 3), 'host') }, { k: 'short' });
+  assert.deepEqual({ ...W.wwRefusal(st, x.l.slice(0, 3) + missing, 'host') }, { k: 'letters' });
+  const once = [...x.l].find((c) => x.l.indexOf(c) === x.l.lastIndexOf(c));
+  assert.deepEqual({ ...W.wwRefusal(st, once.repeat(4), 'host') }, { k: 'letters' }, 'a letter four times that’s on the wheel once');
   assert.deepEqual({ ...W.wwRefusal(st, words[0], 'guest') }, { k: 'found' });
   assert.equal(W.wwRefusal(st, words[0], 'host'), null, 'the partner having it doesn’t matter');
   assert.equal(W.wwRefusal(st, words[1], 'guest'), null);
-  const fake = (x.c + x.o).slice(0, 5);
+  const fake = x.l.slice(0, 5);
   if (!x.set.has(fake)) assert.equal(W.wwRefusal(st, fake, 'host').k, 'word');
   // a plural of a listed word: any wheel with an S and a word that takes one
   for (let i = 0; i < W.WW_WHEELS.length; i++) {
     const s2 = W.wwState(game([], { by: 'host', n: i })), y = s2.wheel;
-    const w = y.words.find((v) => !v.endsWith('S') && v.length < 9 && [...(v + 'S')].every((ch, _, all) => all.filter((c) => c === ch).length <= [...(y.c + y.o)].filter((c) => c === ch).length));
+    const w = y.words.find((v) => !v.endsWith('S') && v.length < 9 && [...(v + 'S')].every((ch, _, all) => all.filter((c) => c === ch).length <= [...y.l].filter((c) => c === ch).length));
     if (w && !y.set.has(w + 'S')) { assert.equal(W.wwRefusal(s2, w + 'S', 'host').k, 'plural'); return; }
   }
   assert.fail('no wheel to test a plural on');
