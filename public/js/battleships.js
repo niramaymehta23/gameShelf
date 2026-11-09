@@ -604,3 +604,87 @@ function makeBattle(box) {
     destroy() { dead = true; clearTimeout(viewTimer); Live.set({ aim: null }); },
   };
 }
+
+// ---------------- Otto (bot.js) ----------------
+// A random fleet, then shots. Hard counts, for every square, how many ways the ships still afloat
+// could lie across it (never over a miss or a sunk ship; with a ship hit but not sunk, only the ways
+// through that hit) and fires at the likeliest. Easy fires at random, and follows up a hit next door
+// most of the time. Neither peeks: a sunk ship is shown to both players anyway.
+function bsBotShot(m, seat, level = 'hard', rng = Math.random) {
+  const st = bsState(m);
+  if (st.turn !== seat || st.winner) return null;
+  const opp = other(seat), shot = st.shotBy[seat], K = (r, c) => r * 10 + c;
+  const sunkCells = new Set();
+  for (const s of st.fleets[opp]) if (st.sunk[opp].includes(s.id)) for (const [r, c] of shipCells(s)) sunkCells.add(K(r, c));
+  const misses = new Set(), hits = [];
+  for (const s of st.shots) {
+    if (s.shooter !== seat) continue;
+    if (!s.hit) misses.add(K(s.r, s.c));
+    else if (!sunkCells.has(K(s.r, s.c))) hits.push([s.r, s.c]);
+  }
+  const open = [];
+  for (let r = 0; r < BS_N; r++) for (let c = 0; c < BS_N; c++) if (!shot.has(K(r, c))) open.push([r, c]);
+  const next = (list) => list[Math.floor(rng() * list.length)];
+  if (level === 'easy') {
+    if (hits.length && rng() < 0.75) {
+      const near = [];
+      for (const [r, c] of hits) for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const rr = r + dr, cc = c + dc;
+        if (rr >= 0 && rr < BS_N && cc >= 0 && cc < BS_N && !shot.has(K(rr, cc))) near.push([rr, cc]);
+      }
+      if (near.length) { const [r, c] = next(near); return { r, c }; }
+    }
+    const [r, c] = next(open);
+    return { r, c };
+  }
+  const blocked = new Set([...misses, ...sunkCells]);
+  const hitSet = new Set(hits.map(([r, c]) => K(r, c)));
+  const heat = new Map();
+  for (const f of FLEET) {
+    if (st.sunk[opp].includes(f.id)) continue;
+    for (const v of [false, true]) for (let r = 0; r < BS_N; r++) for (let c = 0; c < BS_N; c++) {
+      const s = { id: f.id, v, r, c };
+      if (!fitsGrid(s)) continue;
+      const cells = shipCells(s).map(([a, b]) => K(a, b));
+      if (cells.some((k) => blocked.has(k))) continue;
+      const through = cells.filter((k) => hitSet.has(k)).length;
+      if (hits.length && !through) continue;
+      for (const k of cells) if (!shot.has(k)) heat.set(k, (heat.get(k) || 0) + 1 + through * 20);
+    }
+  }
+  let best = -1, picks = [];
+  for (const [r, c] of open) {
+    // when hunting, a chequerboard is enough: every ship covers two neighbouring squares
+    const v = (heat.get(K(r, c)) || 0) * (hits.length || (r + c) % 2 === 0 ? 1 : 0.6);
+    if (v > best) { best = v; picks = [[r, c]]; } else if (v === best) picks.push([r, c]);
+  }
+  const [r, c] = next(picks.length ? picks : open);
+  return { r, c };
+}
+function bsBot(ctx) {
+  return {
+    update(m) {
+      const st = bsState(m);
+      if (!st.fleets[ctx.seat]) {
+        ctx.plan('fleet', botBetween(ctx.rng, 3500, 8000), () => {
+          const now = ctx.m(); if (!now || bsState(now).fleets[ctx.seat]) return;
+          ctx.write({ fleets: { [ctx.seat]: randomFleet() } });
+        });
+        return;
+      }
+      if (st.turn !== ctx.seat) return;
+      const n = st.shots.length;
+      // a moment to watch the last shot land, a moment to aim
+      ctx.plan('s' + n, botBetween(ctx.rng, ctx.hard ? 1300 : 1500, ctx.hard ? 2200 : 3000), () => {
+        const now = ctx.m(); if (!now) return;
+        const s = bsState(now);
+        if (s.turn !== ctx.seat || s.shots.length !== n) return;
+        const a = bsBotShot(now, ctx.seat, ctx.level, ctx.rng);
+        if (!a) return;
+        ctx.show({ aim: [a.r, a.c] });
+        ctx.later(650, () => { ctx.show({ aim: null }); ctx.write({ shots: { ['s' + pad3(n)]: { r: a.r, c: a.c } } }); });
+      });
+    },
+    stop() {},
+  };
+}

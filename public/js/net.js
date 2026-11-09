@@ -161,6 +161,7 @@ const Live = {
   },
   partner() {
     if (!G.seat) return null;
+    if (isBotTable()) return Bot.peer(); // Otto is always at the table, on whatever screen you're on
     const want = other(G.seat);
     const list = this.peers.filter((p) => p.pres && p.pres.seat === want);
     if (!list.length) return null;
@@ -171,7 +172,7 @@ const Live = {
     const p = this.partner(), v = p && p.pres ? p.pres.hover : null;
     return typeof v === 'number' ? v : null;
   },
-  seatOnline(seat) { return this.peers.some((p) => p.pres && p.pres.seat === seat); },
+  seatOnline(seat) { return (G.table && botSeatOf(G.table) === seat) || this.peers.some((p) => p.pres && p.pres.seat === seat); },
 };
 
 // ---------- chat: quick reactions and short notes between the two phones ----------

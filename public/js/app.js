@@ -3,7 +3,7 @@
 const G = {
   dev: null, name: '', code: null, table: null, tableMissing: false, seat: null,
   matchId: null, match: null, joining: false, claimed: false, leftByMe: false, pendingJoin: null,
-  unsubTable: null, unsubMatch: null, waitToast: null,
+  unsubTable: null, unsubMatch: null, waitToast: null, phase: null,
 };
 const partnerName = () => (G.table && G.seat && G.table[other(G.seat)] && G.table[other(G.seat)].name) || 'Your partner';
 const myName = () => (G.table && G.seat && G.table[G.seat] && G.table[G.seat].name) || G.name || 'You';
@@ -165,9 +165,10 @@ const joinedBy = (m, seat) => !m.joined || m.joined[seat] !== false; // older ma
 const hasProgress = (m) => !!m && (['rps', 'moves', 'shots', 'plays', 'picks', 'ans', 'finds', 'laps'].some((k) => Object.keys(m[k] || {}).length > 0) || !!(m.fleets && (m.fleets.host || m.fleets.guest)));
 const notice = (kind, m) => ({ id: newId(), by: G.seat, kind, game: m.game, match: m.id });
 
-async function startMatch(game) {
-  const id = newId();
-  const ok = await write(matchPath(id), { id, game, ...(game === 'sl' ? { slamVersion: 2 } : {}), ...(game === 'hu' ? { hueVersion: 2, hueRules: null } : {}), created: Date.now(), by: G.seat, seed: rid() + rid(), rps: {}, moves: {}, shots: {}, plays: {}, fleets: {}, joined: { [G.seat]: true, [other(G.seat)]: false }, quit: {} }, { set: true });
+// level: 'easy' | 'hard' at a table with Otto (bot.js), who is in from the start
+async function startMatch(game, level) {
+  const id = newId(), bot = isBotTable();
+  const ok = await write(matchPath(id), { id, game, ...(game === 'sl' ? { slamVersion: 2 } : {}), ...(game === 'hu' ? { hueVersion: 2, hueRules: null } : {}), ...(bot ? { bot: level === 'hard' ? 'hard' : 'easy' } : {}), created: Date.now(), by: G.seat, seed: rid() + rid(), rps: {}, moves: {}, shots: {}, plays: {}, fleets: {}, joined: { [G.seat]: true, [other(G.seat)]: bot }, quit: {} }, { set: true });
   // a new game takes the place of a saved one of the same kind
   if (ok) await write(tablePath(), { current: id, saved: { [game]: null } });
 }
@@ -198,7 +199,13 @@ async function quitGame(m) {
 }
 async function rematch(fromId, game) {
   if (!G.table || G.table.current !== fromId) return;
-  await startMatch(game);
+  await startMatch(game, G.match && G.match.id === fromId ? G.match.bot : null);
+}
+// A game against Otto isn't saved: leaving it puts it away.
+async function quitBotGame(m) {
+  G.leftByMe = true;
+  if (!(await write(matchPath(m.id), { quit: { host: true, guest: true } }))) { G.leftByMe = false; return; }
+  await write(tablePath(), { current: null, saved: { [m.game]: null } });
 }
 
 // The other phone's notices. A quit asks for a decision and stays up until it's answered;
@@ -336,6 +343,7 @@ function route() {
   show(name);
   updateBar();
   syncInvite();
+  Bot.sync();
 }
 function show(name) {
   if (cur.name === name) { cur.obj.update && cur.obj.update(); return; }
@@ -384,6 +392,8 @@ function updateBar() {
   const inTable = !!(G.code && G.table && G.seat);
   bar.hidden = !inTable;
   if (!inTable) return;
+  // nobody to chat with at Otto's table (hidden, not removed, so the title stays centred)
+  $('#chatBtn').style.visibility = isBotTable() ? 'hidden' : '';
   const ps = presence();
   $('#partnerDot').className = 'dot ' + ps.state;
   $('#partnerName').textContent = ps.name;

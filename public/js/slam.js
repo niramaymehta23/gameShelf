@@ -279,3 +279,82 @@ function makeSL(box) {
     destroy() { dead = true; clearTimeout(timer); clearDrag(); },
   };
 }
+
+// ---------------- Otto (bot.js) ----------------
+// Otto only knows his own hand and the word on the table. Hard gets rid of his awkward cards first
+// (the card with the fewest ways to play now), keeps blanks for when he's stuck, and leans towards
+// everyday words. Easy plays an everyday word with a card picked at random, and only falls back on an
+// obscure word after a long think. Neither ever calls Stuck while a card would still go.
+let slBotCommon = null;
+const slIsCommon = (w) => {
+  if (!slBotCommon) { slBotCommon = new Set(); const t = QF_COMMON[4]; for (let i = 0; i < t.length; i += 4) slBotCommon.add(t.slice(i, i + 4)); }
+  return slBotCommon.has(w);
+};
+// What Otto does now: a play {k:'play', by, id, pos, letter}, {k:'pass', by} (Stuck), or null (nothing:
+// not his turn, the game's over, or he's already waiting for a fresh word).
+function slBotPlay(st, seat, level = 'hard', rng = Math.random) {
+  if (!slCanAct(st, seat)) return null;
+  const opts = slOptions(st, seat);
+  if (!opts.length) return st.race && st.passed[seat] ? null : { k: 'pass', by: seat };
+  const pick = (list) => list[Math.floor(rng() * list.length)];
+  const common = opts.filter((e) => slIsCommon(slWord(st.word, e.pos, e.letter)));
+  if (level === 'easy') return pick(common.length ? common : opts);
+  const ways = {};
+  for (const e of opts) ways[e.id] = (ways[e.id] || 0) + 1;
+  const score = (e) => (SL_CARDS[e.id] === '*' ? 1000 : 0) + ways[e.id] - (slIsCommon(slWord(st.word, e.pos, e.letter)) ? 0.5 : 0);
+  const best = Math.min(...opts.map(score));
+  return pick(opts.filter((e) => score(e) === best));
+}
+// How long Otto takes over a card (ms): fresh = the word only just changed; obscure = he only has an
+// unusual word to play (Easy takes much longer to find one of those). stuck: the pause before Stuck.
+function slBotDelay(level, rng = Math.random, { fresh = false, obscure = false, stuck = false } = {}) {
+  const r = (lo, hi) => lo + (hi - lo) * rng();
+  const easy = level !== 'hard';
+  if (stuck) return easy ? r(3000, 5500) : r(1800, 3200);
+  return (easy ? r(6000, 12000) : r(3000, 6000)) + (fresh ? r(700, 1600) : 0) + (obscure && easy ? r(4000, 8000) : 0);
+}
+function slBot(ctx) {
+  let lastWord = null, changedAt = 0, sending = false;
+  const KEY = 'sl';
+  function plan(m) {
+    const st = slState(m);
+    if (st.winner || !slCanAct(st, ctx.seat) || (st.race && st.passed[ctx.seat] && !slOptions(st, ctx.seat).length)) return;
+    if (sending || ctx.planned(KEY)) return;
+    const first = slBotPlay(st, ctx.seat, ctx.level, ctx.rng);
+    if (!first) return;
+    const ms = first.k === 'pass' ? slBotDelay(ctx.level, ctx.rng, { stuck: true })
+      : slBotDelay(ctx.level, ctx.rng, { fresh: Date.now() - changedAt < 1500, obscure: !slIsCommon(slWord(st.word, first.pos, first.letter)) });
+    ctx.plan(KEY, ms, () => go());
+  }
+  async function go() {
+    const m = ctx.m(); if (!m) return;
+    const st = slState(m);
+    const e = slBotPlay(st, ctx.seat, ctx.level, ctx.rng);
+    if (!e) return;
+    // the word changed under him a moment ago: a little longer to look at it
+    // (and before Stuck, the whole pause counts from when the word last changed)
+    const since = Date.now() - changedAt;
+    if (e.k === 'pass') { const wait = slBotDelay(ctx.level, ctx.rng, { stuck: true }); if (since < wait) { ctx.plan(KEY, wait - since, () => go()); return; } }
+    else if (since < 900) { ctx.plan(KEY, 700 + 900 * ctx.rng(), () => go()); return; }
+    // the same checks as a player's own card (makeSL's send): only lands on the word he looked at
+    const revision = Object.keys(m.plays || {}).length, baseWord = st.word;
+    sending = true;
+    await ctx.tx((latest) => {
+      if (!joinedBy(latest, ctx.seat) || !joinedBy(latest, ctx.opp)) return null;
+      const current = slState(latest), next = Object.keys(latest.plays || {}).length;
+      const onlyPasses = sortedKeys(latest.plays).slice(revision).every((key) => latest.plays[key]?.k === 'pass');
+      if (next !== revision && (current.word !== baseWord || !onlyPasses)) return null;
+      if (slError(current, e)) return null;
+      return { ['plays.p' + String(next).padStart(5, '0')]: e };
+    });
+    sending = false;
+    const now = ctx.m(); if (now) update(now);
+  }
+  function update(m) {
+    const st = slState(m);
+    if (st.word !== lastWord) { lastWord = st.word; changedAt = Date.now(); }
+    if (st.winner) { ctx.unplan(KEY); return; }
+    plan(m);
+  }
+  return { update, stop() {} };
+}

@@ -410,3 +410,63 @@ function makeWW(box, ctx) {
     destroy() { dead = true; clearTimeout(flashTimer); document.removeEventListener('keydown', onKey); },
   };
 }
+
+// ---------------- Otto (bot.js) ----------------
+// If Otto wins rock, paper, scissors he spins the wheel the way the screen does. Then he "finds" a word
+// every so often from the wheel's own list (most common first): Easy one every 20–40 s, from the
+// everyday end of the list and no longer than six letters; Hard one every 9–20 s, from most of the list.
+// His clock only runs while you're looking at the race (as yours does), so a locked phone costs nobody.
+const WW_BOT_GAP = { easy: [20000, 40000], hard: [9000, 20000] };
+const wwBotGap = (level, rng = Math.random) => { const [lo, hi] = WW_BOT_GAP[level === 'hard' ? 'hard' : 'easy']; return lo + (hi - lo) * rng(); };
+// The word Otto finds next, one he hasn't got yet (null if none is left), leaning towards the front of the list.
+function wwBotWord(st, seat, level = 'hard', rng = Math.random) {
+  const all = st.wheel.words, hard = level === 'hard';
+  const span = Math.max(10, Math.ceil(all.length * (hard ? 0.75 : 0.4)));
+  const fresh = (w) => !st.found[seat].has(w);
+  let pool = all.slice(0, span).filter((w) => fresh(w) && (hard || w.length <= 6));
+  if (!pool.length) pool = all.filter(fresh);
+  if (!pool.length) return null;
+  return pool[Math.floor(pool.length * rng() * rng())]; // rng² leans towards the common end
+}
+function wwBot(ctx) {
+  let tick = null, ran = 0, last = 0, due = null, sending = false;
+  const now = () => (ctx.now ? ctx.now() : Date.now());
+  function step() {
+    tick = null;
+    const m = ctx.m(); if (!m) return;
+    const st = wwState(m);
+    if (!st.setup || st.winner) return;
+    const t = now();
+    // a timer late by more than a couple of seconds was a paused page: that time doesn't count
+    if (ctx.ready() && ctx.phase() === 'ww' && !sending) ran += Math.min(Math.max(0, t - last), 2000);
+    last = t;
+    if (due == null) due = wwBotGap(ctx.level, ctx.rng);
+    if (ran >= due && !sending) {
+      const w = wwBotWord(st, ctx.seat, ctx.level, ctx.rng);
+      if (!w) return;
+      sending = true;
+      ctx.tx((latest) => {
+        const s = wwState(latest);
+        if (s.winner || !s.setup || s.found[ctx.seat].has(w)) return null;
+        return { ['finds.f' + pad3(Object.keys(latest.finds || {}).length)]: { by: ctx.seat, w } };
+      }).then(() => { sending = false; ran = 0; due = wwBotGap(ctx.level, ctx.rng); });
+    }
+    tick = ctx.later(500, step);
+  }
+  return {
+    update(m) {
+      const setup = wwSetup(m);
+      if (!setup) {
+        if (rpsState(m).starter !== ctx.seat) return;
+        ctx.plan('spin', botBetween(ctx.rng, 1500, 2800), () => {
+          const latest = ctx.m(); if (!latest || wwSetup(latest)) return;
+          const finished = Object.values((G.table && G.table.results) || {}).filter((r) => r && r.g === 'ww').length;
+          ctx.choose('ww', { by: ctx.seat, n: wwPick(G.code, finished, wwSeen.get(G.code)) });
+        });
+        return;
+      }
+      if (tick == null && !wwState(m).winner) { last = now(); tick = ctx.later(500, step); }
+    },
+    stop() { if (tick != null) ctx.clear(tick); tick = null; },
+  };
+}

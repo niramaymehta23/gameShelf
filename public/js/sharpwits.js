@@ -846,3 +846,162 @@ function swFlashBoard(c) {
     destroy() { token++; },
   };
 }
+
+// ---------------- Otto (bot.js) ----------------
+// Otto plays his run ahead of time: swBotRun() works out every lap he'll make (how long each step
+// takes him, the wrong taps that hold him up for SW_LOCK, the level he goes out on in Copycat and
+// Flashback), then swBot() writes each lap when his own clock gets there. Hard is quick and makes few
+// mistakes; Easy is slower and slips more. His clock starts with your 3-2-1 and runs only while you
+// can see the race, like yours.
+const SW_COUNTDOWN = 3 * 650; // the 3, 2, 1 on the phone before Go
+const swBetween = (rng, lo, hi) => lo + (hi - lo) * rng();
+// What he takes per step, [lo, hi] ms for Easy and Hard, and how likely a wrong tap is.
+const SW_BOT_PACE = {
+  spot: { easy: [2200, 4200], hard: [1300, 2400], per: { easy: 200, hard: 140 }, miss: { easy: 0.25, hard: 0.1 } },
+  ink: { easy: [950, 1600], hard: [700, 1050], miss: { easy: 0.12, hard: 0.04 } },
+  hunt: { easy: [950, 1900], hard: [650, 1150], miss: { easy: 0.06, hard: 0.02 } },
+  shade: { easy: [1400, 2400], hard: [900, 1500], per: { easy: 150, hard: 100 }, miss: { easy: 0.08, hard: 0.03 }, harder: { easy: 0.04, hard: 0.02 } },
+  pairs: { easy: [600, 1000], hard: [430, 680], remember: { easy: 0.55, hard: 0.95 } },
+  way: { easy: [850, 1300], hard: [580, 880], miss: { easy: 0.1, hard: 0.03 } },
+  copy: { easy: [480, 800], hard: [330, 500], first: { easy: [600, 1000], hard: [350, 600] } },
+  flash: { easy: [520, 880], hard: [380, 580], first: { easy: [600, 1000], hard: [350, 600] } },
+};
+// the chance of going out on a level game's level L (len = L + 2 to remember)
+function swBotFailP(g, level, len) {
+  const hard = level === 'hard', base = g === 'flash' ? 1 : 0;
+  return hard ? Math.max(0.02, (len - 6 + base) * 0.12) : Math.min(0.9, 0.04 + (len - 3 + base) * 0.1);
+}
+// Otto's whole run, as the laps he'll write: {n, ms, x, k?} or {end:'fail', ms, x}, each with `at`,
+// when it happens on his own race clock from Go (ms of tapping and, in the level games, watching).
+// clock is the stretches of `at` when his tapping clock runs (all of it but the watching).
+function swBotRun(m, g, level = 'hard', rng = Math.random) {
+  const pace = SW_BOT_PACE[g], lv = pace[level] ? level : 'hard', hard = lv === 'hard';
+  const [lo, hi] = pace[lv], to = SW_GAMES[g].to, lock = SW_LOCK[g] || 800;
+  const laps = [], clock = [];
+  let at = 0, ms = 0, x = 0;
+  const push = (e) => laps.push({ ...e, ms: swRound(ms), x, at });
+  const spend = (t) => { at += t; ms += t; };
+  const wrong = () => { spend(swBetween(rng, lo, hi) * 0.6); x++; spend(lock); };
+  if (SW_GAMES[g].levels) {
+    for (let L = 1; L <= to; L++) {
+      const len = swCopyLen(L);
+      at += g === 'copy' ? 800 + len * 660 : 700 + 900 + 140 * len; // watching: the clock is stopped
+      const from = at;
+      spend(swBetween(rng, ...pace.first[lv]));
+      const out = rng() < swBotFailP(g, lv, len) ? Math.floor(rng() * len) : -1;
+      for (let i = 0; i < len; i++) {
+        if (i) spend(swBetween(rng, lo, hi));
+        if (i === out) { x++; clock.push([from, at]); push({ end: 'fail' }); return { laps, clock }; }
+      }
+      clock.push([from, at]);
+      push({ n: L });
+    }
+    return { laps, clock };
+  }
+  clock.push([0, Infinity]);
+  if (g === 'pairs') {
+    // he turns two cards at a time, remembering (or not) what he has seen
+    const deck = swPairs(m), seen = new Map(), found = new Set(), gone = new Set();
+    const flip = () => spend(swBetween(rng, lo, hi));
+    const know = (i) => { if (rng() < pace.remember[lv]) seen.set(i, deck[i]); };
+    const known = (sym, not) => [...seen].find(([i, s]) => s === sym && i !== not && !gone.has(i));
+    const fresh = () => { const left = deck.map((_, i) => i).filter((i) => !gone.has(i) && !seen.has(i)); return left.length ? left[Math.floor(rng() * left.length)] : deck.findIndex((_, i) => !gone.has(i)); };
+    for (let guard = 0; found.size < to && guard < 200; guard++) {
+      let a, b;
+      const pair = [...seen].find(([i, s]) => !gone.has(i) && known(s, i));
+      if (pair) { a = pair[0]; b = known(pair[1], a)[0]; flip(); flip(); }
+      else {
+        a = fresh(); flip(); know(a);
+        const mate = known(deck[a], a);
+        b = mate ? mate[0] : (() => { const left = deck.map((_, i) => i).filter((i) => i !== a && !gone.has(i) && !seen.has(i)); return left.length ? left[Math.floor(rng() * left.length)] : deck.findIndex((s, i) => i !== a && !gone.has(i)); })();
+        flip(); know(b);
+      }
+      if (deck[a] === deck[b]) { found.add(deck[a]); gone.add(a); gone.add(b); seen.delete(a); seen.delete(b); push({ n: found.size, k: deck[a] }); }
+      else { x++; spend(lock); }
+    }
+    if (found.size < to) push({ end: 'up' }); // never happens, but a run must end
+    return { laps, clock };
+  }
+  for (let i = 0; i < to; i++) {
+    let t = swBetween(rng, lo, hi), miss = pace.miss[lv];
+    if (g === 'spot') { t += (7 + i) * pace.per[lv] * (i >= 6 ? 1.5 : 1); miss += i * 0.02; }
+    if (g === 'shade') { t += i * pace.per[lv]; miss += i * pace.harder[lv]; }
+    while (rng() < miss) { wrong(); miss /= 2; }
+    spend(t);
+    push({ n: i + 1 });
+  }
+  return { laps, clock };
+}
+// his tapping clock at race time `at` (only the stretches where it runs)
+const swBotClock = (clock, at) => clock.reduce((s, [a, b]) => s + Math.max(0, Math.min(at, b) - a), 0);
+
+function swBot(ctx) {
+  const me = ctx.seat[0];
+  let plan = null, i = 0, next = 0, raceAt = -SW_COUNTDOWN, last = null, tick = null, done = false, start = 0;
+  const queue = {};
+  let flushing = false;
+  async function flush() {
+    const keys = Object.keys(queue);
+    if (flushing || !keys.length) return;
+    const batch = {};
+    for (const k of keys) { batch[k] = queue[k]; delete queue[k]; }
+    flushing = true;
+    const ok = await ctx.write({ laps: batch });
+    flushing = false;
+    if (!ok && ctx.live()) Object.assign(queue, batch); // try again on the next tick
+  }
+  const send = (e) => { queue[me + pad3(next++)] = { ...e, ms: swRound(e.ms) }; };
+  // ten times a second while you're on the race: his clock runs, his laps go when it gets there
+  function step() {
+    tick = null;
+    const m = ctx.m();
+    if (!m || done) return;
+    const now = performance.now();
+    if (ctx.ready() && ctx.phase() === 'sw') raceAt += last == null ? 0 : Math.min(now - last, 250);
+    last = ctx.ready() && ctx.phase() === 'sw' ? now : null;
+    const st = swState({ ...m, laps: { ...(m.laps || {}), ...queue } });
+    if (st.winner) {
+      // decided: send whatever is still waiting, then he's done
+      if (!Object.keys(queue).length && !flushing) { done = true; return; }
+      flush(); tick = ctx.later(300, step); return;
+    }
+    const mine = st.run[ctx.seat], them = st.run[ctx.opp];
+    if (!mine.end) {
+      while (i < plan.laps.length && plan.laps[i].at <= raceAt) { const { at, ...e } = plan.laps[i++]; send(e); }
+      // you finished everything: once his clock passes your time, he's out of time
+      const clockMs = start + swBotClock(plan.clock, raceAt);
+      const after = swState({ ...m, laps: { ...(m.laps || {}), ...queue } }).run[ctx.seat];
+      if (!after.end && them.end === 'all' && clockMs >= them.ms) send({ end: 'out', ms: Math.max(clockMs, after.t), x: after.x });
+    }
+    flush();
+    tick = ctx.later(100, step);
+  }
+  return {
+    update(m) {
+      const setup = swSetup(m);
+      if (!setup) {
+        if (rpsState(m).starter === ctx.seat && !m.sw) {
+          ctx.plan('pick', botBetween(ctx.rng, 1500, 3000), () => ctx.choose('sw', { by: ctx.seat, g: botChoice(ctx.rng, SW_ORDER) }));
+        }
+        return;
+      }
+      if (!plan) {
+        plan = swBotRun(m, setup.g, ctx.level, ctx.rng);
+        // back after a reload: carry on from the laps already written
+        const r = swState(m).run[ctx.seat];
+        next = Object.keys(m.laps || {}).filter((k) => k[0] === me).length;
+        if (r.end) { done = true; return; }
+        if (r.n) {
+          const at = (plan.laps.find((e) => e.n === r.n) || { at: 0 }).at;
+          plan.laps = plan.laps.filter((e) => e.at > at && (e.n == null || e.n > r.n));
+          if (setup.g === 'pairs') { const have = new Set(r.keys); plan.laps = plan.laps.filter((e) => e.end || !have.has(e.k)); plan.laps.forEach((e, j) => { e.n = r.n + j + 1; }); }
+          start = r.t - swBotClock(plan.clock, at);
+          plan.laps.forEach((e) => { e.ms = Math.max(r.t, e.ms - swBotClock(plan.clock, at) + r.t); });
+          raceAt = at;
+        }
+      }
+      if (!done && tick == null) tick = ctx.later(100, step);
+    },
+    stop() { done = true; },
+  };
+}

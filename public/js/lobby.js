@@ -30,7 +30,7 @@ function showRename() {
     const n = name(); save.disabled = true; closeSheet();
     if (await renameSeat(n)) toast(`You’re ${n} at this table now`);
   } }, h('label', { class: 'name-tag', for: 'renameInput' }, h('span', null, 'Hello, my name is'), input), save);
-  openSheet({ title: 'Change your name', sub: `${partnerName()} will see the new one`, body: form, actions: [{ label: 'Keep it', kind: 'ghost' }] });
+  openSheet({ title: 'Change your name', sub: isBotTable() ? null : `${partnerName()} will see the new one`, body: form, actions: [{ label: 'Keep it', kind: 'ghost' }] });
   setTimeout(() => { input.focus(); input.select(); }, 60);
 }
 function showTableHistory() {
@@ -87,6 +87,7 @@ Screens.landing = () => {
         h('div', { class: 'stack' },
           h('button', { class: 'btn btn-primary', 'data-needs-name': '', onclick: create }, 'Set up a table'),
           h('button', { class: 'btn btn-ink', 'data-needs-name': '', onclick: () => { Sound.tap(); mode = 'join'; draw(); } }, 'Join with a code'),
+          h('button', { class: 'btn btn-ghost', 'data-needs-name': '', onclick: (e) => create(e, true) }, `Play ${BOT.name}, the bot`),
         ),
       );
     } else {
@@ -128,14 +129,15 @@ Screens.landing = () => {
     else el.append(h('p', { class: 'hand-note', style: 'margin-top:auto' }, 'One of you sets up a table and shares the four-letter code. The other joins with it.'));
     refreshButtons();
   }
-  async function create(e) {
+  // solo: a table of your own with Otto in the other seat (bot.js)
+  async function create(e, solo = false) {
     const btn = e.currentTarget; btn.disabled = true; Sound.pick();
     try {
       for (let i = 0; i < 6; i++) {
         const code = randCode();
         const s = await Net.doc('tables/' + code).get();
         if (s.exists) continue;
-        const ok = await write('tables/' + code, { code, created: Date.now(), host: { dev: G.dev, name: G.name }, guest: null, current: null, results: {} }, { set: true });
+        const ok = await write('tables/' + code, { code, created: Date.now(), host: { dev: G.dev, name: G.name }, guest: solo ? { ...BOT } : null, current: null, results: {} }, { set: true });
         if (ok) openTable(code);
         else btn.disabled = false;
         return;
@@ -171,7 +173,7 @@ Screens.seat = () => {
     el.replaceChildren(
       h('div', { class: 'display h2' }, 'This table is full'),
       h('p', { class: 'muted', style: 'margin:0' }, 'Two people are already sitting here. If one of them is you on this phone, take your seat back.'),
-      ...['host', 'guest'].filter((s) => t[s]).map((s) => {
+      ...['host', 'guest'].filter((s) => t[s] && !t[s].bot).map((s) => {
         const busy = Live.seatOnline(s);
         return h('button', {
           class: 'btn btn-felt', disabled: busy || null,
@@ -398,6 +400,7 @@ Screens.shelf = () => {
     sheet.replaceChildren(...cells);
   }
   function paintNote() {
+    if (isBotTable()) { note.textContent = `${BOT.name} plays on this phone. Pick a game, then Easy or Hard. Games here never count against your partner.`; return; }
     const p = Live.partner();
     note.textContent = p ? `${partnerName()}’s at the shelf too. Whoever picks a game asks the other to join.` : `${partnerName()} isn’t here right now. Pick a game and they’ll be asked to join when they’re back.`;
   }
@@ -412,9 +415,10 @@ Screens.shelf = () => {
     const body = h('div', { class: 'sheet-body' },
       saved ? h('p', { style: 'margin:0 0 12px' }, `You have a saved game. Carry on where you left off, or start a new one (the saved game is thrown away).`) : null,
       howToList(key));
+    const level = (lv) => ({ label: `Play ${BOT_LEVELS[lv]}`, kind: lv === 'easy' ? 'primary' : 'ink', onClick: () => { Sound.pick(); startMatch(key, lv); } });
     openSheet({
       title: g.name, body,
-      actions: saved
+      actions: isBotTable() ? [level('easy'), level('hard'), { label: 'Put it back', kind: 'ghost' }] : saved
         ? [{ label: 'Carry on the saved game', kind: 'primary', onClick: () => { Sound.pick(); resumeMatch(saved); } },
           { label: 'Start a new game', kind: 'ink', onClick: () => { Sound.pick(); startMatch(key); } },
           { label: 'Put it back', kind: 'ghost' }]
@@ -455,12 +459,12 @@ Screens.match = () => {
     onPeers() { phase && phase.onPeers && phase.onPeers(); },
     // a phase that lays itself out in CSS handles resizes itself (Quickfire: the keyboard coming up must not rebuild it)
     relayout() { if (phase && phase.relayout) { phase.relayout(); return; } if (phaseName) { const n = phaseName; phaseName = null; setPhase(n); phase.update(G.match); } },
-    unmount() { phase && phase.destroy && phase.destroy(); Wake.off(); closeSheet(); },
+    unmount() { phase && phase.destroy && phase.destroy(); G.phase = null; Wake.off(); closeSheet(); },
   };
   function setPhase(name) {
     phase && phase.destroy && phase.destroy();
     phaseEl.replaceChildren();
-    phaseName = name;
+    phaseName = name; G.phase = name;
     const box = h('div', { class: 'phase-box' });
     phaseEl.append(box);
     const ctx = {
@@ -480,12 +484,21 @@ Screens.match = () => {
     else if (name === 'sw-setup') phase = makeSWSetup(box);
     else if (name === 'sw') phase = makeSW(box);
     else phase = makeBS(box, ctx);
+    setTimeout(() => Bot.poke(), 0); // Otto waits for you to reach the game itself
   }
   function confirmLeave() {
     Sound.tap();
     const m = G.match;
     const over = phase && phase.isOver && phase.isOver();
     if (over || !hasProgress(m)) { backToShelf(); return; } // nothing to save yet
+    if (isBotTable()) {
+      openSheet({
+        title: 'Leave this game?',
+        body: `Games against ${BOT.name} aren’t saved, so this one ends here.`,
+        actions: [{ label: 'Quit the game', kind: 'ink', onClick: () => quitBotGame(m) }, { label: 'Keep playing', kind: 'ghost' }],
+      });
+      return;
+    }
     openSheet({
       title: 'Leave this game?',
       body: `Save it to finish another time, or quit. Either way it stops for ${partnerName()} too, and they’ll see what you chose.`,

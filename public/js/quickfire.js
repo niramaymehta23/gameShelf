@@ -511,3 +511,107 @@ function makeQF(box, ctx) {
     },
   };
 }
+
+// ---------------- Otto (bot.js) ----------------
+// Otto's answer to each round is worked out once, as soon as the puzzle is known: the word or number
+// and the time he "takes", on a clock that starts when the puzzle appears on your screen (the same
+// start your own clock uses, kept in Pref). He writes it when that time comes, unless your right
+// answer was quicker: then, once his clock passes yours, he concedes ({out}), as a phone would.
+// Hard: 3–7 s for a word (longer when few words fit), 1.5–4 s for a sum, and the everyday words.
+// Easy: 6–14 s and 3–8 s, and he sometimes gives up on a pair with few words or a big product.
+const QF_BOT_LETTERS = { start: 'SCPBTMDRFHGLW', end: 'ESTDYRNLKHP' };
+const qfBotBetween = (rng, lo, hi) => lo + (hi - lo) * rng();
+// The setup Otto picks when he won RPS (without `by`).
+function qfBotSetup(level = 'hard', rng = Math.random) {
+  const modes = Object.keys(QF_MODES), ops = Object.keys(QF_OPS);
+  const mode = modes[Math.floor(rng() * modes.length)];
+  const words = mode !== 'sums', sums = mode !== 'words';
+  const lens = level === 'easy' ? [4, 5] : [4, 5, 6];
+  return {
+    mode,
+    len: words ? lens[Math.floor(rng() * lens.length)] : null,
+    side: words ? (rng() < 0.5 ? 'start' : 'end') : null,
+    op: sums ? ops[Math.floor(rng() * ops.length)] : null,
+  };
+}
+// Otto's secret pick for round type 'w' (a letter for his end of the word) or 's' (a number).
+function qfBotPick(setup, type, seat, rng = Math.random) {
+  if (type === 'w') {
+    const side = seat === setup.by ? setup.side : setup.side === 'start' ? 'end' : 'start';
+    const set = QF_BOT_LETTERS[side];
+    return set[Math.floor(rng() * set.length)];
+  }
+  const op = QF_OPS[setup.op];
+  return op.lo + Math.floor(rng() * (op.hi - op.lo + 1));
+}
+// Otto's answer to a round in the race: { a: {w}|{n}|{pass:true}, ms } with ms on his own clock.
+function qfBotPlan(round, level = 'hard', rng = Math.random) {
+  const hard = level === 'hard', limit = QF_LIMIT[round.type] - 1000;
+  if (round.type === 'w') {
+    const fits = round.fits || [], few = fits.length < 5;
+    if (!fits.length) return { a: { pass: true }, ms: Math.round(qfBotBetween(rng, 20000, 40000)) };
+    if (!hard && few && rng() < 0.4) return { a: { pass: true }, ms: Math.round(qfBotBetween(rng, 25000, 45000)) };
+    const from = hard ? Math.min(3, fits.length) : Math.min(10, fits.length);
+    const w = fits[Math.floor(rng() * from)];
+    let ms = hard ? qfBotBetween(rng, 3000, 7000) : qfBotBetween(rng, 6000, 14000);
+    if (few) ms += hard ? qfBotBetween(rng, 2000, 6000) : qfBotBetween(rng, 3000, 8000);
+    return { a: { w }, ms: Math.round(Math.min(ms, limit)) };
+  }
+  const big = round.op === 'mul' && round.answer > 100;
+  if (!hard && round.op === 'mul' && round.answer > 200 && rng() < 0.15) return { a: { pass: true }, ms: Math.round(qfBotBetween(rng, 12000, 20000)) };
+  let ms = hard ? qfBotBetween(rng, 1500, 4000) : qfBotBetween(rng, 3000, 8000);
+  if (big) ms += hard ? qfBotBetween(rng, 500, 1500) : qfBotBetween(rng, 1000, 3000);
+  return { a: { n: round.answer }, ms: Math.round(Math.min(ms, limit)) };
+}
+// What Otto writes now, `elapsed` ms into the round on his clock: his planned answer when its time
+// comes, {out} once your quicker right answer is behind him, or null (keep racing).
+function qfBotMove(round, plan, seat, elapsed) {
+  if (!round || round.phase !== 'race' || round.ans[seat]) return null;
+  const theirs = round.ans[other(seat)];
+  if (theirs && theirs.ok && theirs.ms < plan.ms) return elapsed >= theirs.ms ? { a: { out: true }, ms: Math.round(Math.max(elapsed, theirs.ms)) } : null;
+  return elapsed >= plan.ms ? { a: plan.a, ms: plan.ms } : null;
+}
+function qfBot(ctx) {
+  const me = ctx.seat === 'host' ? 'h' : 'g', plans = new Map(), sent = new Set();
+  const round = (m) => { const st = qfState(m); return st.setup && !st.winner ? st.cur : null; };
+  function race(key) {
+    ctx.plan('race:' + key, 100, () => {
+      const m = ctx.m(); if (!m) return;
+      const r = round(m);
+      if (!r || r.key !== key || r.phase !== 'race' || r.ans[ctx.seat] || sent.has(key)) return;
+      // his clock starts with yours: when the puzzle first showed on this screen
+      const t0 = +Pref.get('qf-t0:' + m.id + ':' + key) || 0;
+      const mv = t0 ? qfBotMove(r, plans.get(key), ctx.seat, Date.now() - t0) : null;
+      if (!mv) { race(key); return; }
+      sent.add(key);
+      ctx.write({ ans: { [key + me]: { ...mv.a, ms: mv.ms } } }).then((ok) => { if (!ok) { sent.delete(key); race(key); } });
+    }, { needReady: false });
+  }
+  return {
+    update(m) {
+      const st = qfState(m);
+      if (!st.setup) {
+        if (rpsState(m).starter === ctx.seat && !m.qf) {
+          ctx.plan('setup', botBetween(ctx.rng, 1500, 3000), () => ctx.choose('qf', { by: ctx.seat, ...qfBotSetup(ctx.level, ctx.rng) }));
+        }
+        return;
+      }
+      const r = round(m);
+      if (!r) return;
+      if (r.phase === 'pick') {
+        if (r.picks[ctx.seat] != null) return;
+        ctx.plan('pick:' + r.key, botBetween(ctx.rng, 1200, 3200), () => {
+          const now = ctx.m(); if (!now || ctx.phase() !== 'qf') return;
+          const c = round(now);
+          if (!c || c.key !== r.key || c.phase !== 'pick' || c.picks[ctx.seat] != null) return;
+          ctx.write({ picks: { [c.key]: { [ctx.seat]: qfBotPick(qfSetup(now), c.type, ctx.seat, ctx.rng) } } });
+        });
+        return;
+      }
+      if (r.phase !== 'race' || r.ans[ctx.seat]) return;
+      if (!plans.has(r.key)) plans.set(r.key, qfBotPlan(r, ctx.level, ctx.rng));
+      race(r.key);
+    },
+    stop() {},
+  };
+}

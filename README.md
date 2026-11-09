@@ -10,6 +10,12 @@ different places, one on Android and one on iPhone, and it plays the same on bot
 
 ## Latest updates
 
+- **Practise against Otto, the bot:** *Play Otto, the bot* on the first screen sets up a table of
+  your own with Otto in the other seat, so you can learn a game on one phone. Pick a game, then
+  Easy or Hard. Otto throws rock, paper, scissors, plays every game on the shelf at a human pace,
+  and only moves while the game is on your screen. Games against him never touch the score with
+  your partner (his table has its own score sheet and stats), and they aren't saved: leaving one
+  ends it.
 - **Sharp Wits joins the shelf:** a box of eight quick brain races. The RPS winner picks one and
   you both play it at once, each phone timing its own player: Odd One Out (spot what changed
   between two emoji pictures), Copycat (tap back a growing sequence of scattered dots), True
@@ -134,6 +140,9 @@ The dot under your partner's name tells you where they are: **green** on the sam
 - **Sound.** Small synthesised sounds for drops, shots, cards and wins; the speaker button turns
   them off.
 - **The screen stays on** while a game is open.
+- **Otto, the bot.** For practice on your own: see *Latest updates*. Easy makes human mistakes
+  (misses a win, forgets to call Hues, picks plain words, plays slower); Hard plays well, still at
+  a believable pace.
 
 ## Put it on your home screen
 
@@ -332,9 +341,11 @@ DOC_SHOTS=1 node tests/e2e/phone-layout.mjs  # refresh README screenshots while 
   stats, Word Slam race/dead-end rules, and table history, run in Node.
   `replay.mjs` checks the older RPS, Connect Four, Battleships, Hues and Quickfire replay results
   against a golden file. Word Wheel, Word Slam and Sharp Wits have their own rule and scenario tests.
+  `bot-*.mjs` check Otto's choices in each game (legal moves, Hard beating Easy, believable timing).
 - `tests/e2e/`: Playwright drives two phones at 390×844 through full games of everything, saving
   and quitting, chat, reconnecting and reloading. `phone-layout.mjs` checks all main screens at
-  four phone sizes and prevents game feedback from leaking across matches. Screenshots land in
+  four phone sizes and prevents game feedback from leaking across matches. `bot.mjs` has one phone
+  play each game against Otto. Screenshots land in
   `tests/e2e/screens/` (ignored); selected README images live in `docs/screenshots/`.
 - `tests/visual/compare.mjs`: proves a CSS change renders identically (computed styles and pixels
   at three screen sizes). See its header for how to run it.

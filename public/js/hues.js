@@ -793,3 +793,146 @@ function makeHU(box, ctx) {
     destroy() { dead = true; clearInterval(timer); if (colourResolve) { const done = colourResolve; colourResolve = null; done(null); } Live.set({ hover: null }); },
   };
 }
+
+// ---------------- Otto (bot.js) ----------------
+// Version 2 games only (a table with Otto never has a saved version-1 game). Otto's commands go
+// through hueApply in a transaction, exactly like the screen's, so a stale or illegal one never lands.
+// Hard: plays the colour he holds most of, keeps Blend and Flood until they're needed (or you're nearly
+// out), stacks penalties, trades only into a smaller hand, always calls Hues and always calls you out.
+// Easy: any legal card, sometimes keeps a drawn card, forgets Hues about a third of the time (and
+// sometimes remembers late), and calls you out about half the time.
+const HUE_BOT_FORGET = 0.35, HUE_BOT_LATE = 0.4, HUE_BOT_EASY_CATCH = 0.5;
+const hueBotCounts = (ids) => { const n = [0, 0, 0, 0]; for (const id of ids) if (HUE_DECK[id].c >= 0) n[HUE_DECK[id].c]++; return n; };
+// The colour for a wild ending `ids`. Trade hands his cards over, so Hard names the colour that hand is
+// shortest of; anything else names the colour he's left holding most of.
+function huBotColour(s, seat, ids, level = 'hard', rng = Math.random) {
+  const left = s.hands[seat].filter((id) => !ids.includes(id)), n = hueBotCounts(left);
+  const trade = HUE_DECK[ids[ids.length - 1]].k === 'trade';
+  if (level === 'easy' && (trade || rng() < 0.4)) return Math.floor(rng() * 4);
+  const want = trade ? Math.min(...n) : Math.max(...n);
+  const best = [0, 1, 2, 3].filter((c) => n[c] === want);
+  return best[Math.floor(rng() * best.length)];
+}
+// same-number cards going down together: the first one fits, the last sets the colour (his longest suit)
+function huBotOrder(s, seat, ids) {
+  const [first, ...rest] = ids, n = hueBotCounts(s.hands[seat].filter((id) => !ids.includes(id)));
+  rest.sort((a, b) => n[HUE_DECK[a].c] - n[HUE_DECK[b].c]);
+  return [first, ...rest];
+}
+// What Otto does on his turn: {k:'play', ids, col?} | {k:'draw'} | {k:'keep'} | {k:'pass'}, or null when it isn't his turn.
+function huBotTurn(s, seat, level = 'hard', rng = Math.random) {
+  if (!s || s.version !== 2 || s.winner || s.turn !== seat) return null;
+  const hand = s.hands[seat], theirs = s.hands[other(seat)].length;
+  const play = (ids) => (HUE_KIND[HUE_DECK[ids[ids.length - 1]].k].wild ? { k: 'play', ids, col: huBotColour(s, seat, ids, level, rng) } : { k: 'play', ids });
+  const noPlay = () => (s.paid && !s.penalty ? { k: 'pass' } : { k: 'draw' });
+  const badTrade = (ids) => HUE_DECK[ids[ids.length - 1]].k === 'trade' && theirs >= hand.length - ids.length;
+  if (s.drawn != null) {
+    if (level === 'hard' ? badTrade([s.drawn]) && hand.length > 1 : rng() < 0.15) return { k: 'keep' };
+    return play([s.drawn]);
+  }
+  const opts = [];
+  for (const id of hand) {
+    if (!hueFitsAll(s, [id])) continue;
+    opts.push([id]);
+    const c = HUE_DECK[id];
+    if (c.k !== 'n') continue;
+    const same = hand.filter((x) => x !== id && HUE_DECK[x].k === 'n' && HUE_DECK[x].v === c.v);
+    if (same.length && hueFitsAll(s, [id, ...same])) opts.push(huBotOrder(s, seat, [id, ...same]));
+  }
+  if (!opts.length) return noPlay();
+  if (level === 'easy') {
+    if (s.penalty && rng() < 0.3) return { k: 'draw' };
+    const multi = opts.filter((o) => o.length > 1), singles = opts.filter((o) => o.length === 1);
+    const pool = multi.length && rng() < 0.4 ? multi : singles;
+    return play(pool[Math.floor(rng() * pool.length)]);
+  }
+  const score = (ids) => {
+    const left = hand.length - ids.length, last = HUE_DECK[ids[ids.length - 1]];
+    if (!left) return 1000;
+    const n = hueBotCounts(hand.filter((id) => !ids.includes(id)));
+    let v = ids.length * 3;
+    if (last.k === 'n') v += 2 + 1.5 * n[last.c];
+    else if (last.k === 'again') v += 6 + 1.5 * n[last.c];
+    else if (last.k === 'p2') v += 3 + (theirs <= 3 ? 6 : 0) + n[last.c];
+    else if (last.k === 'p4') v += -6 + (theirs <= 3 ? 12 : 0) + (s.penalty ? 4 : 0);
+    else if (last.k === 'blend') v -= 8;
+    else if (last.k === 'trade') v += theirs < left ? 20 + (left - theirs) * 3 : -30;
+    return v;
+  };
+  let best = -Infinity, pick = null;
+  for (const ids of opts) { const v = score(ids) + rng() * 0.5; if (v > best) { best = v; pick = ids; } }
+  if (badTrade(pick) && hand.length > 1) return noPlay();
+  return play(pick);
+}
+// On one card: call Hues 'now', 'late' (after the call-out lockout has started) or 'never'. Decided once per one-card moment.
+function huBotHuesPlan(level = 'hard', rng = Math.random) {
+  if (level === 'hard' || rng() >= HUE_BOT_FORGET) return 'now';
+  return rng() < HUE_BOT_LATE ? 'late' : 'never';
+}
+// Catch you on one card without Hues? Decided once per one-card moment.
+const huBotCatches = (level = 'hard', rng = Math.random) => level === 'hard' || rng() < HUE_BOT_EASY_CATCH;
+// The next step of catching you: open the call-out window (notice), then call out once it unlocks.
+function huBotCatch(s, seat, now) {
+  const opp = other(seat), one = s && s.oneKey[opp];
+  if (!s || s.version !== 2 || !one) return null;
+  if (hueNeedsNotice(s, seat)) return { k: 'notice', one };
+  if (s.turn === seat && s.owes[opp] && !s.said[opp] && s.callWindow?.by === seat && s.callWindow.one === one) return now >= s.callWindow.until ? { k: 'callout', one } : { k: 'wait', one, until: s.callWindow.until };
+  return null;
+}
+function huBot(ctx) {
+  const seat = ctx.seat, opp = ctx.opp, memo = new Map();
+  const decide = (key, fn) => { if (!memo.has(key)) memo.set(key, fn()); return memo.get(key); };
+  const turnNo = (s) => s.log.filter((e) => !['hues', 'notice', 'callout', 'shuffle'].includes(e.k)).length;
+  const pace = (hard, easy) => botBetween(ctx.rng, ...(ctx.hard ? hard : easy));
+  let retry = null;
+  // the same transaction as the screen's send(): next key, checked by hueApply, a server timestamp for ordinary moves
+  async function send(make) {
+    const ok = await ctx.tx((latest) => {
+      if (latest.hueVersion !== 2) return null;
+      const s = huState(latest), cmd = make(s);
+      if (!cmd) return null;
+      const key = hueKeyV2(Object.keys(latest.plays || {}).length), command = { by: seat, ...cmd, at: Net.now() };
+      hueApply(s, command, key);
+      return { ['plays.' + key]: { ...command, at: ['hues', 'notice'].includes(cmd.k) ? command.at : firebase.firestore.FieldValue.serverTimestamp() } };
+    });
+    // a refused or failed write: look again in a moment (a newer snapshot usually gets there first)
+    if (!ok && retry == null) retry = ctx.later(1500, () => { retry = null; const m = ctx.m(); if (m) api.update(m); });
+    return ok;
+  }
+  const api = {
+    update(m) {
+      if (m.hueVersion !== 2) return;
+      if (!m.hueRules) {
+        if (rpsState(m).starter === seat) ctx.plan('rules', botBetween(ctx.rng, 1500, 3000), () => ctx.choose('hueRules', ctx.rng() < 0.75 ? 'custom' : 'official'));
+        return;
+      }
+      const s = huState(m);
+      ctx.show({ hover: s.turn === seat && !s.winner ? 1 : null });
+      if (s.winner) return;
+      // Hues! when he's down to one card
+      if (hueCanSay(s, seat)) {
+        const one = s.oneKey[seat] || 'n' + Object.keys(m.plays || {}).length;
+        const when = decide('hues:' + one, () => huBotHuesPlan(ctx.level, ctx.rng));
+        if (when !== 'never') ctx.plan('hues:' + one, when === 'now' ? pace([450, 1000], [700, 1500]) : botBetween(ctx.rng, 3000, 6000),
+          () => send((now) => (hueCanSay(now, seat) && now.oneKey[seat] === s.oneKey[seat] ? { k: 'hues' } : null)));
+      }
+      if (s.turn !== seat) return;
+      // you're on one card without calling Hues: catch you before playing on (playing on lets you off)
+      const one = s.oneKey[opp];
+      const step = huBotCatch(s, seat, Net.now());
+      if (step && decide('catch:' + one, () => huBotCatches(ctx.level, ctx.rng))) {
+        if (step.k === 'notice') ctx.plan('notice:' + one, botBetween(ctx.rng, 250, 600), () => send((now) => (hueNeedsNotice(now, seat) && now.oneKey[opp] === one ? { k: 'notice', one } : null)));
+        else ctx.plan('callout:' + one, Math.max(0, step.until - Net.now()) + pace([150, 600], [500, 1600]), () => send((now) => {
+          const c = huBotCatch(now, seat, Net.now());
+          return c && c.k === 'callout' && c.one === one ? c : null;
+        }));
+        return;
+      }
+      const t = turnNo(s);
+      const [lo, hi] = ctx.hard ? [1000, 2000] : [1400, 2800];
+      ctx.plan('t' + t, botBetween(ctx.rng, lo, hi), () => send((now) => (now.turn === seat && turnNo(now) === t ? huBotTurn(now, seat, ctx.level, ctx.rng) : null)));
+    },
+    stop() {},
+  };
+  return api;
+}
