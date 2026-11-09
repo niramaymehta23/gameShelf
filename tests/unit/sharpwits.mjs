@@ -3,7 +3,7 @@ import { load } from './load.mjs';
 // Sharp Wits (public/js/sharpwits.js) outside the browser: the seeded puzzles, the replay of both
 // runs (who wins, and when it's decided), and its rows in the table stats.
 const S = load(['rps.js', 'hues.js', 'sharpwits.js', 'stats.js'],
-  ['swState', 'swSetup', 'swSpot', 'swCopy', 'swInks', 'swHunt', 'swLine', 'SW_GAMES', 'SW_LOOKALIKES', 'SW_FLIPS', 'swCopyLen', 'tableStats'],
+  ['swState', 'swSetup', 'swSpot', 'swCopy', 'swInks', 'swHunt', 'swShade', 'swPairs', 'swWays', 'swFlash', 'SW_SYMBOLS', 'swLine', 'SW_GAMES', 'SW_LOOKALIKES', 'SW_FLIPS', 'swCopyLen', 'tableStats'],
   { matchMedia: () => ({ matches: false }), GAMES: { sw: {} } });
 let n = 0;
 const test = (title, fn) => { fn(); console.log('  ok ' + title); n++; };
@@ -25,7 +25,8 @@ test('setup: only the RPS winner, only the four games', () => {
   assert.equal(S.swSetup(match('hunt', { sw: { by: 'guest', g: 'hunt' } })), null, 'the loser can’t pick');
   assert.equal(S.swSetup(match('chess')), null);
   assert.equal(S.swSetup(match('spot', { rps: {} })), null, 'nobody has won RPS yet');
-  assert.deepEqual(Object.keys(S.SW_GAMES), ['spot', 'copy', 'ink', 'hunt']);
+  assert.deepEqual(Object.keys(S.SW_GAMES), ['spot', 'copy', 'ink', 'hunt', 'shade', 'pairs', 'way', 'flash']);
+  assert.equal(S.swSetup(match('flash')).to, 8);
   assert.equal(S.swState(match('spot', { sw: null })).winner, null);
 });
 
@@ -90,6 +91,47 @@ test('Number Hunt: 1 to 25, each once', () => {
   const cells = S.swHunt({ seed: 'h' });
   assert.deepEqual([...cells.map((c) => c.n)].sort((a, b) => a - b), Array.from({ length: 25 }, (_, i) => i + 1));
   assert.notDeepEqual(cells.map((c) => c.n), S.swHunt({ seed: 'h2' }).map((c) => c.n));
+});
+
+test('Odd Shade: fifteen grids, bigger and closer in colour each time', () => {
+  let last = Infinity;
+  for (let i = 0; i < 15; i++) {
+    const p = S.swShade({ seed: 'o' }, i);
+    assert.ok(p.size >= 3 && p.size <= 6 && p.odd >= 0 && p.odd < p.size * p.size);
+    assert.notEqual(p.base, p.shade);
+    assert.ok(p.delta < last && p.delta >= 4.5, 'the difference shrinks'); last = p.delta;
+    if (i) assert.ok(p.size >= S.swShade({ seed: 'o' }, i - 1).size, 'the grid never shrinks');
+  }
+  assert.equal(S.swShade({ seed: 'o' }, 14).size, 6);
+  assert.deepEqual(S.swShade({ seed: 'o' }, 4), S.swShade({ seed: 'o' }, 4));
+});
+
+test('Pairs: eight symbols, each twice, with its own shape and colour', () => {
+  const deck = S.swPairs({ seed: 'p' });
+  assert.equal(deck.length, 16);
+  for (let k = 0; k < 8; k++) assert.equal(deck.filter((x) => x === k).length, 2);
+  assert.equal(new Set(S.SW_SYMBOLS).size, 8);
+  assert.notDeepEqual([...deck], [...S.swPairs({ seed: 'p2' })]);
+});
+
+test('Which Way: twenty rows, both directions, mostly arrows that disagree', () => {
+  const tally = { same: 0, other: 0, none: 0, l: 0, r: 0 };
+  for (let seed = 0; seed < 50; seed++) {
+    const rows = S.swWays({ seed: 'w' + seed });
+    assert.equal(rows.length, 20);
+    for (const r of rows) { tally[r.flank]++; tally[r.dir]++; assert.ok(Math.abs(r.dx) <= 12 && Math.abs(r.dy) <= 25); }
+  }
+  assert.ok(tally.other > tally.same && tally.same > tally.none && tally.none > 0);
+  assert.ok(Math.abs(tally.l - tally.r) < 120, 'left and right about even');
+});
+
+test('Flashback: eight levels of 3 to 10 different squares', () => {
+  const levels = S.swFlash({ seed: 'f' });
+  assert.equal(levels.length, 8);
+  levels.forEach((sq, i) => {
+    assert.equal(sq.length, i + 3); assert.equal(new Set(sq).size, sq.length);
+    assert.ok(sq.every((k) => Number.isInteger(k) && k >= 0 && k < 25));
+  });
 });
 
 test('a race: both finish, the quicker on their own clock wins, whatever order the laps arrive in', () => {
@@ -159,6 +201,19 @@ test('Copycat: further wins; level for level, less time tapping; only Copycat ca
   assert.equal(S.swState(nope).run.host.end, null);
 });
 
+test('Flashback works like Copycat; Pairs steps must name a new pair', () => {
+  const f = match('flash');
+  laps(f, 'host', ...steps(3, 2000), { end: 'fail', ms: 7000 });
+  laps(f, 'guest', ...steps(2, 1000), { end: 'fail', ms: 3000 });
+  assert.equal(win(f), 'host'); assert.equal(S.swState(f).run.host.end, 'fail');
+  const p = match('pairs');
+  laps(p, 'host', { n: 1, ms: 1000, k: 3 }, { n: 2, ms: 2000, k: 3 }, { n: 2, ms: 2100 }, { n: 2, ms: 2200, k: 8 }, { n: 2, ms: 2300, k: 5 });
+  const r = S.swState(p).run.host;
+  assert.equal(r.n, 2); assert.equal(r.ms, 2300); assert.deepEqual([...r.keys], [3, 5]);
+  laps(p, 'host', ...[0, 1, 2, 4, 6, 7].map((k, i) => ({ n: 3 + i, ms: 3000 + i * 100, k })));
+  assert.equal(S.swState(p).run.host.end, 'all');
+});
+
 test('junk in the log is skipped', () => {
   const m = match('ink');
   m.laps = {
@@ -187,7 +242,7 @@ test('stats: wins, quickest full runs, Copycat’s furthest, wrong taps, the log
   assert.equal(s.sw.guest.hunt, 22500, 'a run that ran out of time isn’t a full one');
   assert.deepEqual({ ...s.sw.host.copy }, { n: 5, ms: 10000 }); assert.equal(s.sw.guest.copy.n, 3);
   assert.equal(s.sw.guest.misses, 5);
-  assert.equal(s.sw.host.spot, null);
+  assert.equal(s.sw.host.spot, null); assert.equal(s.sw.host.flash, null);
   assert.equal(s.log[0].note, 'Copycat: out on level 6 (5 cleared, 10.00 s)');
   assert.equal(s.log[2].note, 'Number Hunt: all 25 in 25.00 s');
 });

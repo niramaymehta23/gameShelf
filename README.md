@@ -10,10 +10,12 @@ different places, one on Android and one on iPhone, and it plays the same on bot
 
 ## Latest updates
 
-- **Sharp Wits joins the shelf:** a box of four quick brain races. The RPS winner picks one and
+- **Sharp Wits joins the shelf:** a box of eight quick brain races. The RPS winner picks one and
   you both play it at once, each phone timing its own player: Odd One Out (spot what changed
   between two emoji pictures), Copycat (tap back a growing sequence of scattered dots), True
-  Colours (tap the paint, not the word) and Number Hunt (1 to 25 in order).
+  Colours (tap the paint, not the word), Number Hunt (1 to 25 in order), Odd Shade (the square
+  that's a shade off), Pairs (the memory card game), Which Way (where the middle arrow points)
+  and Flashback (tap the squares that lit up).
 - **Word Slam joins the shelf:** ten two-sided cards each, RPS for the opening play, then a
   free-for-all race to empty your hand. A checked fresh word rescues genuine dead ends without
   changing either hand. Older saved games keep their original rules.
@@ -97,7 +99,7 @@ The dot under your partner's name tells you where they are: **green** on the sam
   Save/resume, rematches, shelf scores and detailed stats work just like the other games.
   Existing saved games retain their original alternating-turn rules; new matches use the race.
   Inspired by the [original card rules](https://winning-moves.com/images/ScrabbleSlam_WebRules.pdf).
-- **Sharp Wits.** A box of four quick brain races. The rock, paper, scissors winner picks one, a
+- **Sharp Wits.** A box of eight quick brain races. The rock, paper, scissors winner picks one, a
   3-2-1 counts each phone in, and you both play the same seeded puzzles at once.
   **Odd One Out**: two pictures of scattered emoji, one above the other; one thing differs (another
   look-alike emoji, or one mirrored, turned or resized). Tap it in either picture. Ten pictures,
@@ -105,7 +107,11 @@ The dot under your partner's name tells you where they are: **green** on the sam
   paper light up in order; tap them back. Three dots at level 1, one more each level, ten at level 8;
   one wrong tap and you're out. Whoever gets further wins; level for level, whoever spent less time
   tapping. **True Colours**: a colour word painted in another colour; tap the colour of the paint.
-  Twenty cards. **Number Hunt**: 1 to 25 jumbled on a grid; tap them in order. Each phone times its
+  Twenty cards. **Number Hunt**: 1 to 25 jumbled on a grid; tap them in order. **Odd Shade**: a grid of
+  painted squares, one a shade off; fifteen grids, each bigger and closer in colour. **Pairs**: sixteen
+  cards face down; turn two at a time to find the eight pairs. **Which Way**: tap the way the middle of
+  five arrows points, whatever the others do; twenty rows. **Flashback**: squares on a grid light up
+  for a moment; tap the ones that lit, three at level 1 up to ten at level 8. Each phone times its
   own player and only while the game is on screen, so lag costs nobody; a wrong tap holds you up
   for a moment, and the flag gives up.
 
@@ -118,7 +124,7 @@ The dot under your partner's name tells you where they are: **green** on the sam
 - **All the stats.** The little card pinned up beside *Pick a game*: drawn as charts, the head-to-head
   and each game's wins, your recent results, pies of your rock, paper, scissors habits, each
   game's records side by side (fewest discs to win, Battleships accuracy, fewest cards to win in Hues, the fastest
-  Quickfire word, the longest Word Wheel word, Word Slam cards, blanks and times stuck, and the fastest Sharp Wits runs and furthest Copycat level) and a log of recent games. Worked out from the games' saved moves, so older games
+  Quickfire word, the longest Word Wheel word, Word Slam cards, blanks and times stuck, and the fastest Sharp Wits runs and furthest Copycat and Flashback levels) and a log of recent games. Worked out from the games' saved moves, so older games
   count too.
 - **Change your name.** On the shelf, or by joining the table again with the code under a new name.
 - **Reactions and notes.** Tap the chat button to send an emoji (it rains down on your partner's

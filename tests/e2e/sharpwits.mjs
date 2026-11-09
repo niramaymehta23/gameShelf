@@ -4,6 +4,9 @@
 //   Copycat: the dots play, you tap them back; B clears more levels than A, who taps a wrong dot.
 //   Odd One Out: both panels, one and then two changes, a wrong tap; A finishes all ten.
 //   True Colours: A gives up after five cards; B wins as soon as B is ahead.
+//   Then, from ready-made matches (RPS already played): Odd Shade with a wrong tap; Pairs with a
+//   mismatch and a reload that keeps the found pairs up; Which Way raced by both; Flashback, where
+//   B clears more levels than A.
 // Then the stats sheet has a Sharp Wits section. Screens at 390×844 and 320×640.
 //   run by npm run test:e2e (or: node tests/e2e/sharpwits.mjs with npm start running)
 import assert from 'node:assert/strict';
@@ -38,6 +41,20 @@ async function atSmallPhone(p, name) {
   await p.setViewportSize({ width: 390, height: 844 }); await sleep(300);
   assert.ok(await fits(p), name + ' fits at 390×844');
 }
+// a match with RPS already won by A and the game picked, opened on both phones
+let fixtures = 0;
+async function direct(g) {
+  for (const p of [a, b]) await p.locator('#sheet').getByRole('button', { name: 'Back to the shelf' }).click({ timeout: 3000 }).catch(() => {});
+  const id = 'swx' + Date.now().toString(36) + fixtures++;
+  for (const p of [a, b]) await p.evaluate((id) => { Pref.set('intro:' + id, '1'); Pref.set('howto:' + id, '1'); }, id);
+  await a.evaluate(async ({ id, g }) => {
+    await Net.doc(matchPath(id)).set({ id, game: 'sw', seed: 'e2e-' + id, by: 'host', created: Date.now(), joined: { host: true, guest: true },
+      rps: { r1: { host: 'rock', guest: 'scissors' }, r2: { host: 'paper', guest: 'rock' } }, sw: { by: 'host', g }, laps: {} });
+    await Net.doc(tablePath()).update({ current: id });
+  }, { id, g });
+  await Promise.all([a, b].map(racing));
+  return id;
+}
 // tap Number Hunt numbers in order
 async function hunt(p, from, to) { for (let k = from; k <= to; k++) await p.locator(`.sw-cell[data-n="${k}"]`).click(); }
 
@@ -54,7 +71,7 @@ try {
   await openGame(a, b, [['Rock', 'Paper'], ['Scissors', 'Rock']]);
   assert.ok((await b.locator('.sw-setup').innerText()).includes('Niramay won rock, paper, scissors'));
   assert.equal(await b.locator('.sw-opt').count(), 0, 'the loser has nothing to pick');
-  assert.equal(await a.locator('.sw-opt').count(), 4);
+  assert.equal(await a.locator('.sw-opt').count(), 8);
   await snap(a, 'sw-02-setup');
   await atSmallPhone(a, 'sw-02-setup');
   await pick(a, 'hunt', 'Number Hunt');
@@ -183,15 +200,96 @@ try {
   await snap(b, 'sw-13-ink-end');
   ok('True Colours: A gave up at five; B won as soon as B passed it');
 
+  // ---- Odd Shade: A plays all fifteen with one wrong tap ----
+  await b.locator('#sheet').getByRole('button', { name: 'Back to the shelf' }).click().catch(() => {});
+  await direct('shade');
+  for (let i = 0; i < 15; i++) {
+    await until(a, (n) => document.querySelector('.sw-sb .sb-side b').textContent === n + '/15' && document.querySelectorAll('.sw-sq').length === swShade(G.match, n).size ** 2, i);
+    const odd = await a.evaluate((n) => swShade(G.match, n).odd, i);
+    if (i === 9) {
+      await a.locator(`.sw-sq[data-i="${odd === 0 ? 1 : 0}"]`).click();
+      assert.ok((await status(a)).includes('Not that one'));
+      await snap(a, 'sw-15-shade'); await atSmallPhone(a, 'sw-15-shade');
+      await sleep(950);
+    }
+    await a.locator(`.sw-sq[data-i="${odd}"]`).click();
+  }
+  await endSheets();
+  const s5 = await sw(b);
+  assert.equal(s5.winner, 'host'); assert.equal(s5.host.n, 15); assert.equal(s5.host.x, 1);
+  ok('Odd Shade: fifteen grids up to 6×6, a wrong tap held A up, A wins');
+
+  // ---- Pairs: a mismatch turns back; a reload keeps the found pairs up ----
+  await direct('pairs');
+  const deck = await a.evaluate(() => swPairs(G.match));
+  const at = (k) => deck.flatMap((x, i) => (x === k ? [i] : []));
+  const card = (i) => a.locator(`.sw-card[data-i="${i}"]`).click();
+  await card(at(0)[0]); await card(at(1)[0]);
+  assert.ok((await status(a)).includes('No match'));
+  await snap(a, 'sw-16-pairs-miss');
+  await until(a, () => !document.querySelector('.sw-card.up'));
+  await sleep(150);
+  for (const k of [0, 1, 2]) { await card(at(k)[0]); await card(at(k)[1]); }
+  await until(a, () => swState(G.match).run.host.n === 3);
+  await a.reload(); await racing(a);
+  assert.equal(await a.locator('.sw-card.found.up').count(), 6, 'the three pairs found are still up after a reload');
+  assert.ok((await status(a)).includes('5 pairs to go'));
+  await snap(a, 'sw-17-pairs'); await atSmallPhone(a, 'sw-17-pairs');
+  for (const k of [3, 4, 5, 6, 7]) { await card(at(k)[0]); await card(at(k)[1]); }
+  await endSheets();
+  const s6 = await sw(b);
+  assert.equal(s6.winner, 'host'); assert.equal(s6.host.n, 8); assert.equal(s6.host.x, 1);
+  ok('Pairs: a mismatch turned back, found pairs survived a reload, A found all eight');
+
+  // ---- Which Way: both race all twenty ----
+  await direct('way');
+  const rows = await a.evaluate(() => swWays(G.match).map((r) => r.dir));
+  const way = async (p, i, wrong = false) => {
+    await until(p, ([n, d]) => document.querySelector('.sw-arrows .mid')?.dataset.dir === d && document.querySelector('.sw-sb .sb-side b').textContent === n + '/20', [i, rows[i]]);
+    await p.locator(`.sw-way-btn[data-d="${wrong ? (rows[i] === 'l' ? 'r' : 'l') : rows[i]}"]`).click();
+  };
+  await way(b, 0, true); await sleep(850);
+  await snap(b, 'sw-18-way'); await atSmallPhone(b, 'sw-18-way');
+  await Promise.all([(async () => { for (let i = 0; i < 20; i++) await way(a, i); })(), (async () => { for (let i = 0; i < 20; i++) await way(b, i).catch(() => {}); })()]);
+  await endSheets();
+  const s7 = await sw(a);
+  assert.ok(s7.winner === 'host' || s7.winner === 'guest');
+  const w7 = s7[s7.winner], l7 = s7[s7.winner === 'host' ? 'guest' : 'host'];
+  assert.ok(w7.n === 20 && (l7.n < 20 || l7.ms > w7.ms), 'the quicker full run wins');
+  assert.equal(s7.guest.x, 1);
+  ok(`Which Way: both raced twenty rows; ${s7.winner} was quicker on their own clock`);
+
+  // ---- Flashback: A out on level 3, B clears three ----
+  await direct('flash');
+  const levels = await a.evaluate(() => swFlash(G.match));
+  async function squares(p, level, wrong = false) {
+    const want = levels[level - 1];
+    await until(p, (l) => document.querySelector('.sw-status').textContent.includes(`Your turn: ${l} squares`), want.length, 20000);
+    if (wrong) { const no = [...Array(25).keys()].find((k) => !want.includes(k)); await p.locator(`.sw-tile[data-i="${want[0]}"]`).click(); await p.locator(`.sw-tile[data-i="${no}"]`).click(); return; }
+    for (const k of want) await p.locator(`.sw-tile[data-i="${k}"]`).click();
+  }
+  await until(a, () => !!document.querySelector('.sw-tile.lit'));
+  await snap(a, 'sw-19-flash-watch');
+  await Promise.all([(async () => { for (const l of [1, 2, 3]) await squares(b, l); })(), (async () => { await squares(a, 1); await squares(a, 2); })()]);
+  await atSmallPhone(a, 'sw-19-flash');
+  await squares(a, 3, true);
+  await until(a, () => swState(G.match).run.host.end === 'fail');
+  await snap(a, 'sw-20-flash-out');
+  await endSheets();
+  const s8 = await sw(a);
+  assert.equal(s8.winner, 'guest'); assert.equal(s8.host.n, 2); assert.ok(s8.guest.n >= 3);
+  for (const p of [a, b]) assert.equal(await junk(p), null);
+  ok('Flashback: A tapped a square that never lit on level 3; B cleared three, so B wins');
+  // these weren't opened from the shelf, so put the table back there
+  for (const p of [a, b]) await p.locator('#sheet').getByRole('button', { name: 'Back to the shelf' }).click().catch(() => {});
+
   // ---- the stats ----
-  await b.locator('#sheet').getByRole('button', { name: 'Back to the shelf' }).click();
-  await a.locator('#sheet').getByRole('button', { name: 'Back to the shelf' }).click().catch(() => {});
   await a.locator('.stats-btn').waitFor();
   await a.locator('.stats-btn').click();
   const sec = a.locator('.stats-sec').filter({ has: a.locator('h3', { hasText: /^Sharp Wits$/ }) });
   await sec.waitFor({ timeout: 8000 });
   const text = await sec.innerText();
-  for (const row of ['Fastest Number Hunt', 'Copycat: furthest level', 'Fastest Odd One Out', 'Wrong taps']) assert.ok(text.includes(row), row);
+  for (const row of ['Fastest Number Hunt', 'Copycat: furthest level', 'Fastest Odd One Out', 'Fastest Odd Shade', 'Fastest Pairs', 'Fastest Which Way', 'Flashback: furthest level', 'Wrong taps']) assert.ok(text.includes(row), row);
   await sec.scrollIntoViewIfNeeded();
   await snap(a, 'sw-14-stats');
   ok('the stats sheet has a Sharp Wits section');

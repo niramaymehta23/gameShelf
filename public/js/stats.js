@@ -32,7 +32,7 @@ function tableStats(table, matches) {
     qf: seatsOf(() => ({ wins: 0, rounds: 0, word: null, sum: null, answers: 0, ms: 0, gaveUp: 0 })),
     ww: seatsOf(() => ({ wins: 0, words: 0, longest: null, nines: 0 })),
     sl: seatsOf(() => ({ wins: 0, cards: 0, blanks: 0, passes: 0, fewest: null })),
-    sw: seatsOf(() => ({ wins: 0, spot: null, copy: null, ink: null, hunt: null, misses: 0 })),
+    sw: seatsOf(() => ({ wins: 0, spot: null, copy: null, ink: null, hunt: null, shade: null, pairs: null, way: null, flash: null, misses: 0 })),
   };
 
   // wins and streaks: a draw ends the run
@@ -139,7 +139,7 @@ const STATS_GAME = {
     }
     return st.reason === 'empty' ? `all ten cards played${st.race && st.refreshes ? `, ${st.refreshes} fresh ${st.refreshes === 1 ? 'word' : 'words'}` : ''}, ending on ${st.word}` : `${st.hands.host.length}–${st.hands.guest.length} cards left, blocked on ${st.word}`;
   },
-  // Sharp Wits: per seat the quickest full run of each timed game, and Copycat's best (furthest, then quickest)
+  // Sharp Wits: per seat the quickest full run of each timed game, and the level games' best (furthest, then quickest)
   sw(m, rec) {
     const st = swState(m);
     if (!st.setup) return '';
@@ -147,7 +147,7 @@ const STATS_GAME = {
     for (const seat of ['host', 'guest']) {
       const run = st.run[seat], r = rec[seat];
       r.misses += run.x;
-      if (g === 'copy') { if (run.n && (!r.copy || swBeats(run, r.copy))) r.copy = { n: run.n, ms: run.ms }; }
+      if (SW_GAMES[g].levels) { if (run.n && (!r[g] || swBeats(run, r[g]))) r[g] = { n: run.n, ms: run.ms }; }
       else if (run.end === 'all') r[g] = lowest(r[g], run.ms);
     }
     if (!st.winner) return '';
@@ -326,6 +326,10 @@ function statsView(s) {
     ['Copycat: furthest level', (x) => s.sw[x].copy && s.sw[x].copy.n, statsNum, 'hi'],
     ['Fastest True Colours', (x) => s.sw[x].ink, statsSecs, 'lo'],
     ['Fastest Number Hunt', (x) => s.sw[x].hunt, statsSecs, 'lo'],
+    ['Fastest Odd Shade', (x) => s.sw[x].shade, statsSecs, 'lo'],
+    ['Fastest Pairs', (x) => s.sw[x].pairs, statsSecs, 'lo'],
+    ['Fastest Which Way', (x) => s.sw[x].way, statsSecs, 'lo'],
+    ['Flashback: furthest level', (x) => s.sw[x].flash && s.sw[x].flash.n, statsNum, 'hi'],
     ['Wrong taps', (x) => s.sw[x].misses, statsNum],
   ])));
 

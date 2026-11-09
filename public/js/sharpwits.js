@@ -1,6 +1,6 @@
 'use strict';
 // ================= Sharp Wits: a box of quick brain games =================
-// The rock, paper, scissors winner picks one of four races for the match: match.sw = {by, g}.
+// The rock, paper, scissors winner picks one of eight races for the match: match.sw = {by, g}.
 //   spot  Odd One Out: two panels of scattered emoji, one above the other; tap what changed. Ten
 //         puzzles, the last four with two changes. (Emoji are this game's pieces: the one place
 //         outside chat reactions where the shelf shows them.)
@@ -8,13 +8,20 @@
 //         dots, each level one more, to ten at level 8. One wrong tap and you're out.
 //   ink   True Colours: a colour word painted in another colour; tap the paint, not the word. 20 cards.
 //   hunt  Number Hunt: 1 to 25 shuffled on a grid; tap them in order.
+//   shade Odd Shade: a grid of painted squares, one a shade off; the grid grows and the difference
+//         shrinks over 15 rounds.
+//   pairs Pairs: sixteen cards face down; turn two at a time to find the eight pairs.
+//   way   Which Way: five arrows in a row; tap the way the middle one points, whatever the others do. 20.
+//   flash Flashback: squares on a 5×5 grid light up for a moment; tap the ones that lit. Like
+//         Copycat: three at level 1, ten at level 8, one wrong tap and you're out.
 // Every puzzle comes from match.seed, so both phones see the same ones; nothing about them is stored.
 //
 // Fair timing, as in Quickfire: each phone runs its own clock from its own "Go" (and only while the
-// page is showing), so lag costs nobody and no clocks need to agree. Copycat's clock only runs while
-// you're tapping, never while you watch. Progress is an append-only log per seat: match.laps.hNNN /
+// page is showing), so lag costs nobody and no clocks need to agree. In the level games (Copycat,
+// Flashback) the clock only runs while you're tapping, never while you watch. Progress is an append-only log per seat: match.laps.hNNN /
 // gNNN = {n, ms, x} (reached n at ms on that phone's clock, x wrong taps so far) or {end, ms, x} with
-// end 'up' (gave up), 'out' (the other had already finished faster) or 'fail' (Copycat's wrong tap).
+// end 'up' (gave up), 'out' (the other had already finished faster) or 'fail' (a level game's wrong
+// tap). In Pairs each step also names the pair found (k), so a reload can turn the found pairs back up.
 // A run ends there or at the last puzzle. Further is better; for the same progress, sooner is.
 // swState(m) replays it: the result is decided as soon as both runs are over, or one is over and the
 // other's progress already beats it. Each phone writes only its own keys, so no transactions.
@@ -24,9 +31,14 @@ const SW_GAMES = {
   copy: { name: 'Copycat', to: 8, line: 'Tap the dots back. Eight levels', unit: 'levels' },
   ink: { name: 'True Colours', to: 20, line: 'Tap the paint, not the word. 20 cards', unit: 'cards' },
   hunt: { name: 'Number Hunt', to: 25, line: 'Tap 1 to 25 in order', unit: 'numbers' },
+  shade: { name: 'Odd Shade', to: 15, line: 'One square is a shade off. 15 grids', unit: 'grids' },
+  pairs: { name: 'Pairs', to: 8, line: 'Turn two cards, find the pairs', unit: 'pairs', keyed: true },
+  way: { name: 'Which Way', to: 20, line: 'Which way the middle arrow points. 20', unit: 'arrows' },
+  flash: { name: 'Flashback', to: 8, line: 'Tap the squares that lit. Eight levels', unit: 'levels', levels: true },
 };
-const SW_ORDER = ['spot', 'copy', 'ink', 'hunt'];
-const SW_LOCK = { spot: 1000, ink: 900, hunt: 600 }; // a wrong tap holds you up this long (ms)
+SW_GAMES.copy.levels = true;
+const SW_ORDER = ['spot', 'copy', 'ink', 'hunt', 'shade', 'pairs', 'way', 'flash'];
+const SW_LOCK = { spot: 1000, ink: 900, hunt: 600, shade: 900, pairs: 800, way: 800 }; // a wrong tap holds you up this long (ms)
 const SW_MAX_MS = 36e5;
 
 // ---------- the puzzles, all from the seed ----------
@@ -121,6 +133,52 @@ function swHunt(m) {
   return ns.map((n) => ({ n, r: Math.round((rnd() - 0.5) * 14), s: swRound(0.82 + rnd() * 0.36, 100) }));
 }
 
+// Odd Shade: round i is a size×size grid of one painted colour with one square lighter or darker,
+// by fewer lightness points each round (16 down to about 5).
+const SW_SHADE_SIZES = [3, 3, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6];
+const SW_SHADE_HUES = [8, 22, 38, 95, 140, 175, 205, 225, 265, 330];
+function swShade(m, i) {
+  const rnd = swRng(m, 'shade', i), size = SW_SHADE_SIZES[i];
+  const hue = SW_SHADE_HUES[Math.floor(rnd() * SW_SHADE_HUES.length)] + Math.round((rnd() - 0.5) * 10);
+  const sat = 36 + Math.round(rnd() * 22), light = 46 + Math.round(rnd() * 14), delta = swRound(16 - i * 0.8);
+  const odd = Math.floor(rnd() * size * size), dl = rnd() < 0.5 ? delta : -delta;
+  return { size, odd, delta, base: `hsl(${hue} ${sat}% ${light}%)`, shade: `hsl(${hue} ${sat}% ${swRound(light + dl)}%)` };
+}
+
+// Pairs: eight painted symbols (art/sw-sym-0…7.png), each twice, shuffled onto a 4×4 table. Each has
+// its own shape and its own colour, so it's memory, not eyesight.
+const SW_SYMBOLS = ['red circle', 'navy square', 'yellow triangle', 'green star', 'lavender heart', 'orange diamond', 'blue moon', 'plum cross']; // art/sw-sym-N.png
+function swPairs(m) {
+  const rnd = swRng(m, 'pairs'), deck = [0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7];
+  for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
+  return deck;
+}
+
+// Which Way: twenty rows of five arrows. The middle one points left or right; the others point the
+// same way (about two in five), the other way (most of the rest) or are plain bars. Each row sits a
+// little off centre, so your eye has to find it.
+function swWays(m) {
+  const rnd = swRng(m, 'way'), out = [];
+  while (out.length < SW_GAMES.way.to) {
+    const r = rnd(), row = { dir: rnd() < 0.5 ? 'l' : 'r', flank: r < 0.4 ? 'same' : r < 0.85 ? 'other' : 'none', dx: Math.round((rnd() - 0.5) * 24), dy: Math.round((rnd() - 0.5) * 50) };
+    const last = out[out.length - 1];
+    if (last && last.dir === row.dir && last.flank === row.flank && Math.abs(last.dy - row.dy) < 12) continue;
+    out.push(row);
+  }
+  return out;
+}
+
+// Flashback: for each of the eight levels, level + 2 different squares of a 5×5 grid.
+function swFlash(m) {
+  const rnd = swRng(m, 'flash'), levels = [];
+  for (let level = 1; level <= SW_GAMES.flash.to; level++) {
+    const all = Array.from({ length: 25 }, (_, i) => i);
+    for (let i = all.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [all[i], all[j]] = [all[j], all[i]]; }
+    levels.push(all.slice(0, swCopyLen(level)).sort((a, b) => a - b));
+  }
+  return levels;
+}
+
 // ---------- the replay ----------
 function swSetup(m) {
   const s = m && m.sw;
@@ -130,20 +188,23 @@ function swSetup(m) {
 // One seat's run from its own keys (letter 'h' or 'g'), in key order. Entries that don't follow on
 // (a step skipped, time going backwards, anything after the end) are ignored.
 function swRun(setup, laps, letter) {
-  const run = { n: 0, ms: 0, t: 0, x: 0, end: null };
+  const run = { n: 0, ms: 0, t: 0, x: 0, end: null }, game = SW_GAMES[setup.g], keys = game.keyed ? [] : null;
   for (const key of sortedKeys(laps)) {
     if (key.length !== 4 || key[0] !== letter) continue;
     const e = laps[key];
     if (run.end || !e || typeof e !== 'object' || typeof e.ms !== 'number' || !(e.ms >= run.t) || e.ms > SW_MAX_MS) continue;
     if (e.end !== undefined) {
-      if (!(e.end === 'up' || e.end === 'out' || (e.end === 'fail' && setup.g === 'copy'))) continue;
+      if (!(e.end === 'up' || e.end === 'out' || (e.end === 'fail' && game.levels))) continue;
       run.end = e.end;
-    } else if (e.n === run.n + 1) { run.n = e.n; run.ms = e.ms; }
-    else continue;
+    } else if (e.n === run.n + 1) {
+      if (keys) { if (!Number.isInteger(e.k) || e.k < 0 || e.k >= setup.to || keys.includes(e.k)) continue; keys.push(e.k); }
+      run.n = e.n; run.ms = e.ms;
+    } else continue;
     run.t = e.ms;
     if (Number.isInteger(e.x) && e.x > run.x && e.x < 1e4) run.x = e.x;
     if (run.n >= setup.to) run.end = 'all';
   }
+  if (keys) run.keys = keys;
   return run;
 }
 // further wins; at the same progress, whoever got there sooner on their own clock
@@ -164,7 +225,7 @@ function swState(m) {
 const swSecs = (ms) => (ms / 1000).toFixed(2) + ' s';
 function swLine(setup, r) {
   const to = setup.to;
-  if (setup.g === 'copy') {
+  if (SW_GAMES[setup.g].levels) {
     if (r.end === 'all') return `all ${to} levels, ${swSecs(r.ms)} tapping`;
     const at = `level ${r.n + 1}`, cleared = r.n ? ` (${r.n} cleared, ${swSecs(r.ms)})` : '';
     return (r.end === 'fail' ? `out on ${at}` : r.end === 'up' ? `gave up on ${at}` : r.end === 'out' ? `on ${at} when time ran out` : `on ${at}`) + cleared;
@@ -212,7 +273,8 @@ function makeSW(box) {
   let m = null, st = null, setup = null, id = null, dead = false, finished = false;
   let board = null, started = false, counting = false, n = 0, myEnd = null, misses = 0, lockUntil = 0, next = 0;
   let acc = 0, since = null, wantClock = false; // the clock: ms run so far, and since when (performance.now) it's running
-  let flash = '', flashTimer = null, tick = null, said = '';
+  let flash = '', flashTimer = null, tick = null, said = '', lockText = '';
+  let lv = false; // a level game (Copycat, Flashback): the clock runs only while tapping
   const queue = {};
   let flushing = false, flushTimer = null;
 
@@ -286,20 +348,20 @@ function makeSW(box) {
     canPlay, dead: () => dead,
     say(text) { said = text; paint(); },
     inputOn() { clockOn(); },
-    step() {
+    step(k) {
       if (!canPlay()) return;
       const ms = clockNow();
       n++;
-      if (setup.g === 'copy') clockOff();
+      if (lv) clockOff();
       if (n >= setup.to) { myEnd = 'all'; clockOff(); }
-      lap({ n, ms });
+      lap(k === undefined ? { n, ms } : { n, ms, k });
       Sound.ding(); vibrate(8);
       if (myEnd) { board.freeze(); showMine(); } else board.show(n);
       paint();
     },
-    miss() {
+    miss(text = 'Not that one! Wait a moment') {
       if (!canPlay()) return;
-      misses++; lockUntil = performance.now() + (SW_LOCK[setup.g] || 800);
+      misses++; lockText = text; lockUntil = performance.now() + (SW_LOCK[setup.g] || 800);
       Sound.lose(); vibrate(20);
       root.classList.add('locked');
       setTimeout(() => { root.classList.remove('locked'); paint(); }, SW_LOCK[setup.g] || 800);
@@ -329,7 +391,7 @@ function makeSW(box) {
       { label: 'Keep going', kind: 'ghost' },
     ] });
   }
-  const progressWords = (k) => (setup.g === 'copy' ? (k ? `with ${k} ${k === 1 ? 'level' : 'levels'} cleared` : 'on level 1') : `at ${k} of ${setup.to}`);
+  const progressWords = (k) => (lv ? (k ? `with ${k} ${k === 1 ? 'level' : 'levels'} cleared` : 'on level 1') : `at ${k} of ${setup.to}`);
 
   // ---- starting: wait for both, then 3, 2, 1 on this phone; the board stays covered till Go ----
   function maybeStart() {
@@ -346,7 +408,7 @@ function makeSW(box) {
       }
       counting = false; started = true; cover.hidden = true; cover.replaceChildren();
       Sound.pick();
-      if (setup.g !== 'copy') clockOn();
+      if (!lv) clockOn();
       board.show(n);
       paint();
     };
@@ -359,21 +421,20 @@ function makeSW(box) {
     cover.hidden = false;
     cover.replaceChildren(h('div', { class: 'sw-done paper' }, h('div', { class: 'tape sage' }),
       h('span', { class: 'eyebrow' }, myEnd === 'all' ? 'Finished' : myEnd === 'fail' ? 'Out' : 'Stopped'),
-      h('b', { class: 'display' }, myEnd === 'all' && setup.g !== 'copy' ? swSecs(r.ms) : cap(swLine(setup, r))),
+      h('b', { class: 'display' }, myEnd === 'all' && !lv ? swSecs(r.ms) : cap(swLine(setup, r))),
       h('p', { class: 'script' }, `Waiting for ${P}…`)));
   }
   function lastMs() { const v = view(); return v.run ? v.run[seat].ms : 0; }
 
   // ---- drawing ----
-  const progress = (r, k) => (setup.g === 'copy' ? (r.end === 'all' ? '8 ✓' : `Lv ${k + (r.end ? 0 : 1)}`) : `${k}`);
   function paint() {
     if (dead || !st || !setup) return;
     const v = view(), them = v.run[opp];
-    mine.textContent = setup.g === 'copy' ? (myEnd === 'all' ? 'All 8' : `Lv ${myEnd ? n : n + 1}`) : `${n}/${setup.to}`;
-    theirs.textContent = setup.g === 'copy' ? (them.end === 'all' ? 'All 8' : `Lv ${them.end ? them.n : them.n + 1}`) : `${them.n}/${setup.to}`;
+    mine.textContent = lv ? (myEnd === 'all' ? 'All 8' : `Lv ${myEnd ? n : n + 1}`) : `${n}/${setup.to}`;
+    theirs.textContent = lv ? (them.end === 'all' ? 'All 8' : `Lv ${them.end ? them.n : them.n + 1}`) : `${them.n}/${setup.to}`;
     theirs.classList.toggle('over', !!them.end);
     if (!mid.firstChild) mid.append(SW_GAMES[setup.g].name, clockEl);
-    clockEl.textContent = started || myEnd ? swSecs(clockNow()).replace(/(\.\d)\d/, '$1') : setup.g === 'copy' ? 'tapping time' : 'ready';
+    clockEl.textContent = started || myEnd ? swSecs(clockNow()).replace(/(\.\d)\d/, '$1') : lv ? 'tapping time' : 'ready';
     giveUp.disabled = !started || !!myEnd || finished || counting;
     actions.hidden = finished;
     root.classList.toggle('racing', started && !myEnd && !finished);
@@ -383,7 +444,7 @@ function makeSW(box) {
       else if (!joinedBy(m, opp)) text = `Waiting for ${P} to join…`;
       else if (counting) text = 'Ready…';
       else if (myEnd) text = them.end ? 'Working it out…' : `${P} is still going`;
-      else if (performance.now() < lockUntil) text = 'Not that one! Wait a moment';
+      else if (performance.now() < lockUntil) text = lockText;
       else text = said;
     }
     status.textContent = text;
@@ -435,8 +496,10 @@ function makeSW(box) {
         next = Object.keys(m.laps || {}).filter((k) => k[0] === me).length;
         // Copycat starts the level again after a reload, so only cleared levels' time counts;
         // the others carry on the clock (it's saved as it runs)
-        acc = setup.g === 'copy' ? r.ms : Math.max(+Pref.get(clockKey()) || 0, r.t);
-        board = { spot: swSpotBoard, copy: swCopyBoard, ink: swInkBoard, hunt: swHuntBoard }[setup.g](c);
+        lv = !!SW_GAMES[setup.g].levels;
+        acc = lv ? r.ms : Math.max(+Pref.get(clockKey()) || 0, r.t);
+        c.found = r.keys || []; // Pairs: the pairs this phone has already found
+        board = { spot: swSpotBoard, copy: swCopyBoard, ink: swInkBoard, hunt: swHuntBoard, shade: swShadeBoard, pairs: swPairsBoard, way: swWayBoard, flash: swFlashBoard }[setup.g](c);
         stage.replaceChildren(board.el);
         root.classList.add('sw-game-' + setup.g);
         tick = setInterval(run, 100);
@@ -445,7 +508,7 @@ function makeSW(box) {
       const them = st.run[opp];
       if (lastThem && !lastThem.end && them.end && !st.winner && !finished) {
         Sound.pop();
-        matchToast(id, them.end === 'all' ? `${P} finished: ${setup.g === 'copy' ? 'all 8 levels' : swSecs(them.ms)}. Beat that!` : `${P} ${them.end === 'fail' ? 'is out' : 'stopped'}: ${swLine(setup, them)}`, 3200);
+        matchToast(id, them.end === 'all' ? `${P} finished: ${lv ? 'all 8 levels' : swSecs(them.ms)}. Beat that!` : `${P} ${them.end === 'fail' ? 'is out' : 'stopped'}: ${swLine(setup, them)}`, 3200);
       }
       lastThem = them;
       if (myEnd && !finished && cover.hidden) showMine();
@@ -468,6 +531,9 @@ function makeSW(box) {
     },
   };
 }
+
+// A grid laid on a taped sheet of paper (Number Hunt, Odd Shade, Flashback)
+const swSheet = (grid, tape = '') => h('div', { class: 'sw-sheet paper' }, h('div', { class: 'tape ' + tape }), grid);
 
 // ---------- Odd One Out: two panels, one above the other ----------
 function swSpotBoard(c) {
@@ -520,7 +586,7 @@ function swSpotBoard(c) {
 const SW_NOTES = [392, 440, 523, 587, 659, 784, 880];
 function swCopyBoard(c) {
   const { dots, seq } = swCopy(c.m);
-  const els = dots.map((d, k) => h('button', { class: 'sw-dot', 'data-i': k, 'aria-label': 'Dot ' + (k + 1), style: `left:${d.x}%;top:${d.y}%` }));
+  const els = dots.map((d, k) => h('button', { class: 'sw-dot', 'data-i': k, 'aria-label': 'Dot ' + (k + 1), style: `left:${d.x}%;top:${d.y}%;--tilt:${(k * 47) % 40 - 20}deg` }, h('i', { class: 'wash' }), h('i', { class: 'ring' })));
   const pad = h('div', { class: 'sw-dots paper' }, ...els);
   const el = h('div', { class: 'sw-copy' }, pad);
   let level = 0, pos = 0, input = false, token = 0, frozen = false;
@@ -593,7 +659,7 @@ function swInkBoard(c) {
     show(i) {
       cur = i;
       const cd = cards[i];
-      word.textContent = SW_INKS[cd.word].name; word.style.color = SW_INKS[cd.ink].c;
+      word.textContent = SW_INKS[cd.word].name; word.style.setProperty('--paint', SW_INKS[cd.ink].c);
       word.dataset.ink = SW_INKS[cd.ink].k;
       word.animate([{ transform: 'scale(.7) rotate(-4deg)', opacity: 0.3 }, { transform: 'scale(1) rotate(0)', opacity: 1 }], { duration: 160, easing: 'ease-out' });
       c.say('Tap the colour of the paint');
@@ -608,7 +674,7 @@ function swHuntBoard(c) {
   let want = 1, frozen = false;
   const els = cells.map((it) => h('button', { class: 'sw-cell', 'data-n': it.n, style: `--r:${it.r}deg;--s:${it.s}` }, h('span', null, String(it.n))));
   const grid = h('div', { class: 'sw-grid' }, ...els);
-  const el = h('div', { class: 'sw-hunt' }, grid);
+  const el = h('div', { class: 'sw-hunt' }, swSheet(grid));
   grid.addEventListener('pointerdown', (e) => {
     const cell = e.target.closest('.sw-cell');
     if (!cell || frozen || !c.canPlay() || e.button > 0) return;
@@ -629,5 +695,154 @@ function swHuntBoard(c) {
       c.say(`Find ${want}`);
     },
     freeze() { frozen = true; },
+  };
+}
+
+// ---------- Odd Shade: one square a shade off ----------
+function swShadeBoard(c) {
+  const grid = h('div', { class: 'sw-grid sw-shade-grid' });
+  const el = h('div', { class: 'sw-hunt sw-shade' }, swSheet(grid, 'rose'));
+  let puz = null, frozen = false;
+  grid.addEventListener('pointerdown', (e) => {
+    const t = e.target.closest('.sw-sq');
+    if (!t || !puz || frozen || !c.canPlay() || e.button > 0) return;
+    e.preventDefault();
+    if (+t.dataset.i === puz.odd) c.step();
+    else { shake(grid, 6); c.miss(); }
+  });
+  return {
+    el,
+    show(i) {
+      puz = swShade(c.m, i);
+      grid.style.setProperty('--n', puz.size);
+      grid.replaceChildren(...Array.from({ length: puz.size * puz.size }, (_, k) => h('button', { class: 'sw-sq', 'data-i': k, 'aria-label': 'Square ' + (k + 1) }, h('i', { class: 'wash', style: `background-color:${k === puz.odd ? puz.shade : puz.base}` }))));
+      grid.animate([{ opacity: 0.3, transform: 'scale(.97)' }, { opacity: 1, transform: 'scale(1)' }], { duration: 160, easing: 'ease-out' });
+      c.say(i < 3 ? 'Tap the square that’s a different shade' : 'Find the odd shade');
+    },
+    freeze() { frozen = true; if (puz) grid.querySelector(`[data-i="${puz.odd}"]`)?.classList.add('odd'); },
+  };
+}
+
+// ---------- Pairs: sixteen cards, face down ----------
+function swPairsBoard(c) {
+  const deck = swPairs(c.m), found = new Set(c.found);
+  let open = [], frozen = false;
+  const els = deck.map((sym, i) => h('button', { class: 'sw-card', 'data-i': i, 'aria-label': 'Card ' + (i + 1) },
+    h('span', { class: 'back' }, h('img', { src: 'art/sw-back.png', alt: '' })), h('span', { class: 'face' }, h('img', { class: 'wc', src: `art/sw-sym-${sym}.png`, alt: '' }))));
+  const grid = h('div', { class: 'sw-grid sw-pairs-grid' }, ...els);
+  const el = h('div', { class: 'sw-hunt sw-pairs' }, grid);
+  const turn = (i, up) => { els[i].classList.toggle('up', up); els[i].setAttribute('aria-label', up ? `Card ${i + 1}, ${SW_SYMBOLS[deck[i]]}` : 'Card ' + (i + 1)); };
+  grid.addEventListener('pointerdown', (e) => {
+    const card = e.target.closest('.sw-card');
+    if (!card || frozen || !c.canPlay() || e.button > 0) return;
+    e.preventDefault();
+    const i = +card.dataset.i;
+    if (found.has(deck[i]) || open.includes(i)) return;
+    open.push(i); turn(i, true); Sound.tap();
+    if (open.length < 2) return;
+    const [a, b] = open; open = [];
+    if (deck[a] === deck[b]) { found.add(deck[a]); c.step(deck[a]); return; }
+    c.miss('No match');
+    setTimeout(() => { if (!frozen) { turn(a, false); turn(b, false); } }, SW_LOCK.pairs - 60);
+  });
+  return {
+    el,
+    show(n) {
+      els.forEach((x, i) => { x.classList.toggle('found', found.has(deck[i])); if (found.has(deck[i])) turn(i, true); });
+      grid.classList.add('on');
+      c.say(n ? `${8 - n} ${8 - n === 1 ? 'pair' : 'pairs'} to go` : 'Turn two cards. Find the pairs');
+    },
+    freeze() { frozen = true; },
+  };
+}
+
+// ---------- Which Way: the middle arrow ----------
+function swWayBoard(c) {
+  const rows = swWays(c.m);
+  let cur = 0, frozen = false;
+  const row = h('div', { class: 'sw-arrows', role: 'img' });
+  const card = h('div', { class: 'sw-way-card paper' }, h('div', { class: 'tape sage' }), row);
+  const tap = (d) => {
+    if (frozen || !c.canPlay()) return;
+    if (d === rows[cur].dir) c.step();
+    else { shake(card, 8); c.miss(); }
+  };
+  const btns = [['l', 'Left'], ['r', 'Right']].map(([d, name]) => {
+    const b = h('button', { class: 'sw-way-btn ' + d, 'data-d': d, 'aria-label': name }, h('i', { class: 'sw-arr' + (d === 'l' ? ' l' : '') }));
+    b.addEventListener('pointerdown', (e) => { if (e.button > 0) return; e.preventDefault(); tap(d); });
+    b.addEventListener('click', (e) => { if (e.detail === 0) tap(d); });
+    return b;
+  });
+  const onKey = (e) => {
+    if (e.target.closest?.('input, textarea')) return;
+    if (e.key === 'ArrowLeft') tap('l'); else if (e.key === 'ArrowRight') tap('r'); else return;
+    e.preventDefault();
+  };
+  document.addEventListener('keydown', onKey);
+  const el = h('div', { class: 'sw-way' }, card, h('div', { class: 'sw-way-btns' }, ...btns));
+  return {
+    el,
+    show(i) {
+      cur = i;
+      const r = rows[i], flip = (d) => (d === 'l' ? ' l' : '');
+      const side = r.flank === 'none' ? null : r.flank === 'same' ? r.dir : r.dir === 'l' ? 'r' : 'l';
+      row.replaceChildren(...[0, 1, 2, 3, 4].map((k) => k === 2 ? h('i', { class: 'sw-arr mid' + flip(r.dir), 'data-dir': r.dir })
+        : h('i', { class: side ? 'sw-arr' + flip(side) : 'sw-arr bar' })));
+      row.style.translate = `${r.dx}% ${r.dy}%`;
+      row.setAttribute('aria-label', `The middle arrow points ${r.dir === 'l' ? 'left' : 'right'}`);
+      row.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120 });
+      c.say('Which way does the middle arrow point?');
+    },
+    freeze() { frozen = true; },
+    destroy() { document.removeEventListener('keydown', onKey); },
+  };
+}
+
+// ---------- Flashback: the squares that lit ----------
+function swFlashBoard(c) {
+  const levels = swFlash(c.m);
+  const els = Array.from({ length: 25 }, (_, k) => h('button', { class: 'sw-tile', 'data-i': k, 'aria-label': 'Square ' + (k + 1) }, h('i', { class: 'wash' })));
+  const grid = h('div', { class: 'sw-grid sw-flash-grid' }, ...els);
+  const sheet = swSheet(grid, 'sage');
+  const el = h('div', { class: 'sw-hunt sw-flash' }, sheet);
+  let level = 0, want = [], got = new Set(), input = false, token = 0, frozen = false;
+  const clear = () => els.forEach((x) => x.classList.remove('lit', 'tap', 'wrong', 'hint'));
+  async function show(cleared) {
+    level = cleared + 1; want = levels[level - 1]; got = new Set(); input = false;
+    const mine = ++token;
+    clear(); sheet.classList.add('watching');
+    c.say(`Level ${level}: remember ${want.length} squares`);
+    await sleep(700);
+    if (mine !== token || c.dead() || frozen) return;
+    want.forEach((k) => els[k].classList.add('lit')); Sound.tone(660, 0.25, { type: 'triangle', vol: 0.08 });
+    await sleep(900 + 140 * want.length);
+    if (mine !== token || c.dead() || frozen) return;
+    clear(); sheet.classList.remove('watching');
+    input = true; c.inputOn();
+    c.say(`Your turn: ${want.length} squares`);
+  }
+  grid.addEventListener('pointerdown', (e) => {
+    const t = e.target.closest('.sw-tile');
+    if (!t || !input || frozen || !c.canPlay() || e.button > 0) return;
+    e.preventDefault();
+    const k = +t.dataset.i;
+    if (got.has(k)) return;
+    if (want.includes(k)) {
+      got.add(k); t.classList.add('tap'); Sound.tone(520 + got.size * 40, 0.15, { type: 'triangle', vol: 0.09 });
+      if (got.size === want.length) { input = false; c.step(); }
+      else c.say(`Your turn: ${want.length - got.size} more`);
+    } else {
+      input = false; t.classList.add('wrong');
+      want.forEach((w) => { if (!got.has(w)) els[w].classList.add('hint'); });
+      c.say(`That was level ${level}`);
+      c.fail();
+    }
+  });
+  return {
+    el,
+    show(cleared) { show(cleared); },
+    resume() { if (!input && !frozen && level) show(level - 1); },
+    freeze() { frozen = true; input = false; token++; sheet.classList.remove('watching'); },
+    destroy() { token++; },
   };
 }

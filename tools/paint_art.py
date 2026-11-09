@@ -593,3 +593,60 @@ def box_sw(W=360, H=480):
     save_rgba(s.rgba(), 'box-sw.png')
 
 box_sw()
+
+# ================= Sharp Wits pieces =================
+# Masks (painted in near-black, used as CSS mask-image and coloured by the page, so one painting serves
+# every colour): a round wash, a square swatch, a brush loop, a cross, an arrow and a bar. Then the
+# Pairs card back and its eight painted symbols, each its own shape and colour.
+DARK = (14, 14, 18)
+
+def sw_mask(name, paint, W=160, H=160):
+    s = Sheet(W, H)
+    paint(s, W, H)
+    save_rgba(s.rgba(), name)
+
+def sw_masks():
+    sw_mask('sw-blob.png', lambda s, W, H: s.wash(ellipse(W, H, W / 2, H / 2, 64, 60, 0.4), DARK, strength=0.95, edge=0.5, bloom=0.25, gran=0.25, rough=0.12))
+    sw_mask('sw-swatch.png', lambda s, W, H: s.wash(rrect(W, H, 14, 16, W - 12, H - 14, 9), DARK, strength=1.0, edge=0.35, bloom=0.15, gran=0.12, rough=0.1))
+    def loop(s, W, H):
+        c = W / 2
+        path = [(c + (58 + 3 * math.sin(t * 3)) * math.cos(t), c + (52 + 2 * math.cos(t * 2)) * math.sin(t)) for t in np.linspace(-2.2, 2 * math.pi - 1.75, 70)]
+        s.ink([path], width=9, color=DARK, alpha=0.95, wobble=1.6)
+    sw_mask('sw-ring.png', loop)
+    sw_mask('sw-cross.png', lambda s, W, H: s.ink([[(34, 30), (W - 32, H - 34)], [(W - 36, 28), (30, H - 30)]], width=11, color=DARK, alpha=0.95, wobble=2))
+    def arrow(s, W, H):
+        y = H / 2
+        s.ink([[(16, y + 1), (W * 0.45, y - 1), (W - 22, y)], [(W - 62, y - 36), (W - 22, y), (W - 60, y + 35)]], width=19, color=DARK, alpha=0.95, wobble=1.4)
+    sw_mask('sw-arrow.png', arrow, 200, 120)
+    sw_mask('sw-bar.png', lambda s, W, H: s.ink([[(24, H / 2 + 1), (W / 2, H / 2 - 1), (W - 24, H / 2)]], width=19, color=DARK, alpha=0.95, wobble=1.4), 200, 120)
+
+def sw_back(S=160):
+    s = Sheet(S, S)
+    c = S / 2
+    reserve = poly(S, S, [(c, c - 26), (c + 26, c), (c, c + 26), (c - 26, c)])
+    s.wash(rrect(S, S, 6, 6, S - 6, S - 6, 12) & ~reserve, RED, strength=0.9, bloom=0.45, gran=0.45, rough=0.08)
+    s.wash(disk(S, S, c, c, 9), OCHRE, strength=0.9, edge=1.1, rough=0.08)
+    s.ink([rrect_path(16, 16, S - 16, S - 16)], width=1.8, color=(240, 228, 206), alpha=0.6)
+    save_rgba(s.rgba(), 'sw-back.png')
+
+SW_SYMS = [RED, NAVY, OCHRE, SAGE, HUE['lavender'], HUE['orange'], SEA, PLUM]
+def sw_symbols(S=160):
+    c = S / 2
+    star = [(c + (54 if i % 2 == 0 else 23) * math.cos(-math.pi / 2 + i * math.pi / 5), c + 4 + (54 if i % 2 == 0 else 23) * math.sin(-math.pi / 2 + i * math.pi / 5)) for i in range(10)]
+    heart = disk(S, S, c - 22, c - 14, 27) | disk(S, S, c + 22, c - 14, 27) | poly(S, S, [(c - 47, c - 4), (c + 47, c - 4), (c, c + 52)])
+    shapes = [
+        disk(S, S, c, c, 50),
+        rrect(S, S, c - 46, c - 46, c + 46, c + 46, 6),
+        poly(S, S, [(c, c - 54), (c + 54, c + 44), (c - 54, c + 44)]),
+        poly(S, S, star),
+        heart,
+        poly(S, S, [(c, c - 58), (c + 44, c), (c, c + 58), (c - 44, c)]),
+        disk(S, S, c, c, 52) & ~disk(S, S, c + 26, c - 16, 44),
+        rrect(S, S, c - 17, c - 54, c + 17, c + 54, 4) | rrect(S, S, c - 54, c - 17, c + 54, c + 17, 4),
+    ]
+    for k, (mask, col) in enumerate(zip(shapes, SW_SYMS)):
+        s = Sheet(S, S)
+        s.wash(mask, col, strength=0.9, edge=1.0, bloom=0.4, gran=0.4, rough=0.1)
+        save_rgba(s.rgba(), f'sw-sym-{k}.png')
+
+sw_masks(); sw_back(); sw_symbols()
