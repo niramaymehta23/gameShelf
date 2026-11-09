@@ -28,7 +28,7 @@ async function openQuickfire(first) {
 try {
   await Promise.all([a, b].map((p) => p.goto(URL)));
   await setUpTable(a, b);
-  assert.equal(await a.locator('.cubby .gbox').count(), 6);
+  assert.equal(await a.locator('.cubby .gbox').count(), 7);
   await snap(a, 'qf-01-shelf');
   ok('Quickfire is on the shelf with the others');
 

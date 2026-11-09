@@ -287,6 +287,18 @@ const GAMES = {
       { t: 'Empty your hand to win', d: 'First to play all ten cards wins. Tap Stuck only when neither side of any card can make a word. When both are stuck, a new playable word appears. Keep your remaining cards and race on.', art: 'art/box-sl.png' },
     ],
   },
+  sw: {
+    name: 'Sharp Wits', cls: 'sw', art: 'art/box-sw.png',
+    starter: { line: (me, P) => (me ? 'You pick the game, then you both race.' : `${P} picks the game, then you both race.`), go: 'To the games' },
+    howTo: [
+      { t: 'Who picks', d: 'Rock, paper, scissors, best of three. The winner picks one of four quick games, and you both play it at once, each on your own phone.', art: 'art/rps-rock.png' },
+      { t: 'Odd One Out', d: 'Two pictures, one above the other. One thing in them is different: another emoji, or turned, flipped or resized. Tap it in either picture. Ten pictures; the last four hide two.', art: 'art/box-sw.png' },
+      { t: 'Copycat', d: 'Watch the dots light up, then tap them in the same order. Three to start, one more each level, ten at level 8. One wrong tap and you’re out. Whoever gets further wins; level for level, the one who tapped quicker.' },
+      { t: 'True Colours', d: 'A colour word painted in another colour. Tap the colour of the paint, not what the word says. Twenty cards.' },
+      { t: 'Number Hunt', d: '1 to 25, jumbled on a grid. Tap them in order, as fast as you can.' },
+      { t: 'Fair timing', d: 'Each phone times you on its own clock from its own Go, so a slow connection costs nobody. A wrong tap holds you up for a moment. Quickest wins; the flag gives up.' },
+    ],
+  },
 };
 
 // ---------------- how to play ----------------
@@ -432,7 +444,7 @@ Screens.match = () => {
     update() {
       const m = G.match; if (!m) return;
       const st = rpsState(m);
-      const want = !howToDone ? 'howto' : (!st.starter || !introDone) ? 'rps' : (m.game === 'hu' && m.hueVersion === 2 && !m.hueRules) ? 'hue-rules' : (m.game === 'qf' && !qfSetup(m)) ? 'qf-setup' : (m.game === 'ww' && !wwSetup(m)) ? 'ww-spin' : m.game;
+      const want = !howToDone ? 'howto' : (!st.starter || !introDone) ? 'rps' : (m.game === 'hu' && m.hueVersion === 2 && !m.hueRules) ? 'hue-rules' : (m.game === 'qf' && !qfSetup(m)) ? 'qf-setup' : (m.game === 'ww' && !wwSetup(m)) ? 'ww-spin' : (m.game === 'sw' && !swSetup(m)) ? 'sw-setup' : m.game;
       if (want !== phaseName) setPhase(want);
       phase && phase.update(m);
     },
@@ -461,6 +473,8 @@ Screens.match = () => {
     else if (name === 'ww-spin') phase = makeWWSpin(box);
     else if (name === 'ww') phase = makeWW(box, ctx);
     else if (name === 'sl') phase = makeSL(box);
+    else if (name === 'sw-setup') phase = makeSWSetup(box);
+    else if (name === 'sw') phase = makeSW(box);
     else phase = makeBS(box, ctx);
   }
   function confirmLeave() {

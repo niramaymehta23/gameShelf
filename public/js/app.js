@@ -59,7 +59,7 @@ function writeError(e, fallback) {
 const tablePath = () => 'tables/' + G.code;
 const matchPath = (id) => `${tablePath()}/matches/${id}`;
 
-// The RPS winner sets something once for the whole match (the Hues rules, the Quickfire setup, the wheel). It's
+// The RPS winner sets something once for the whole match (the Hues rules, the Quickfire setup, the wheel, the Sharp Wits game). It's
 // written in a transaction, so it only lands if nobody has set it yet and this phone still won.
 async function chooseOnce(m, field, value, taken, failed) {
   const path = matchPath(m.id);
@@ -162,7 +162,7 @@ function watchMatch(id) {
 // match.joined {host, guest}  who is in; whoever opens a game is, the other phone is asked to join
 // match.quit   {host, guest}  who chose to quit without saving
 const joinedBy = (m, seat) => !m.joined || m.joined[seat] !== false; // older matches have no joined map: both are in
-const hasProgress = (m) => !!m && (['rps', 'moves', 'shots', 'plays', 'picks', 'ans', 'finds'].some((k) => Object.keys(m[k] || {}).length > 0) || !!(m.fleets && (m.fleets.host || m.fleets.guest)));
+const hasProgress = (m) => !!m && (['rps', 'moves', 'shots', 'plays', 'picks', 'ans', 'finds', 'laps'].some((k) => Object.keys(m[k] || {}).length > 0) || !!(m.fleets && (m.fleets.host || m.fleets.guest)));
 const notice = (kind, m) => ({ id: newId(), by: G.seat, kind, game: m.game, match: m.id });
 
 async function startMatch(game) {

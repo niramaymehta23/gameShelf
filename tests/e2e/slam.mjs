@@ -64,7 +64,7 @@ async function move(p, e, drag = false) {
 }
 try {
   await Promise.all([a, b].map((p) => p.goto(URL))); await setUpTable(a, b);
-  assert.equal(await a.locator('.cubby .gbox').count(), 6);
+  assert.equal(await a.locator('.cubby .gbox').count(), 7);
   await a.locator('.gbox.sl').scrollIntoViewIfNeeded(); await snap(a, 'sl-01-shelf');
   await a.locator('.gbox.sl').click(); await a.getByRole('button', { name: 'Play Word Slam', exact: true }).click();
   await b.locator('#sheet').getByRole('button', { name: 'Join', exact: true }).click();

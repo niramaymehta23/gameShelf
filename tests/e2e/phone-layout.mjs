@@ -70,6 +70,10 @@ try {
   await fixture('qf', { qf: { by: 'host', mode: 'sums', op: 'add' }, picks: { r001: { host: 100, guest: 100 } } }, '.qf-pad'); await inspect('quickfire-sums');
   await fixture('ww', { ww: { by: 'host', n: 0 } }, '.ww-wheel'); await inspect('word-wheel');
   await fixture('sl', { slamVersion: 2 }, '.sl-hand'); await inspect('word-slam');
+  await fixture('sw', {}, '.sw-setup'); await inspect('sharp-wits-setup');
+  for (const [g, sel] of [['spot', '.sw-panel'], ['copy', '.sw-dot'], ['ink', '.sw-ink-btn'], ['hunt', '.sw-cell']]) {
+    await fixture('sw', { sw: { by: 'host', g } }, sel); await sleep(2200); await inspect('sharp-wits-' + g);
+  }
   await a.evaluate(() => { closeTable(); route(); }); await a.locator('#nameInput').waitFor(); await inspect('landing-history');
   console.log(JSON.stringify(reports, null, 2));
   assert.deepEqual(errors, []); console.log(process.env.LAYOUT_REPORT === '1' ? '  layout report complete' : '  ok main screens fit compact, Samsung-sized and iPhone-sized viewports; game notices stay with their match');

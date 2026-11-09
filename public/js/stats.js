@@ -24,7 +24,7 @@ function tableStats(table, matches) {
 
   const s = {
     games: done.length, wins: seatsOf(() => 0), draws: 0, streak: { seat: null, n: 0 }, best: seatsOf(() => 0),
-    played: { c4: 0, bs: 0, hu: 0, qf: 0, ww: 0, sl: 0 }, split: {}, log: [],
+    played: { c4: 0, bs: 0, hu: 0, qf: 0, ww: 0, sl: 0, sw: 0 }, split: {}, log: [],
     rps: seatsOf(() => ({ rock: 0, paper: 0, scissors: 0, throws: 0, opener: { rock: 0, paper: 0, scissors: 0 }, tosses: 0 })),
     c4: seatsOf(() => ({ wins: 0, fewest: null, discs: 0, first: 0 })),
     bs: seatsOf(() => ({ wins: 0, shots: 0, hits: 0, best: null, fewest: null, run: 0 })),
@@ -32,6 +32,7 @@ function tableStats(table, matches) {
     qf: seatsOf(() => ({ wins: 0, rounds: 0, word: null, sum: null, answers: 0, ms: 0, gaveUp: 0 })),
     ww: seatsOf(() => ({ wins: 0, words: 0, longest: null, nines: 0 })),
     sl: seatsOf(() => ({ wins: 0, cards: 0, blanks: 0, passes: 0, fewest: null })),
+    sw: seatsOf(() => ({ wins: 0, spot: null, copy: null, ink: null, hunt: null, misses: 0 })),
   };
 
   // wins and streaks: a draw ends the run
@@ -137,6 +138,22 @@ const STATS_GAME = {
       const r = rec[st.winner]; r.wins++; r.fewest = lowest(r.fewest, st.log.filter((e) => e.by === st.winner && e.k === 'play').length);
     }
     return st.reason === 'empty' ? `all ten cards played${st.race && st.refreshes ? `, ${st.refreshes} fresh ${st.refreshes === 1 ? 'word' : 'words'}` : ''}, ending on ${st.word}` : `${st.hands.host.length}–${st.hands.guest.length} cards left, blocked on ${st.word}`;
+  },
+  // Sharp Wits: per seat the quickest full run of each timed game, and Copycat's best (furthest, then quickest)
+  sw(m, rec) {
+    const st = swState(m);
+    if (!st.setup) return '';
+    const g = st.setup.g;
+    for (const seat of ['host', 'guest']) {
+      const run = st.run[seat], r = rec[seat];
+      r.misses += run.x;
+      if (g === 'copy') { if (run.n && (!r.copy || swBeats(run, r.copy))) r.copy = { n: run.n, ms: run.ms }; }
+      else if (run.end === 'all') r[g] = lowest(r[g], run.ms);
+    }
+    if (!st.winner) return '';
+    if (st.winner === 'draw') return `${SW_GAMES[g].name}, a dead heat: ${swLine(st.setup, st.run.host)}`;
+    rec[st.winner].wins++;
+    return `${SW_GAMES[g].name}: ${swLine(st.setup, st.run[st.winner])}`;
   },
   ww(m, rec) {
     const st = wwState(m);
@@ -301,6 +318,15 @@ function statsView(s) {
     ['Blanks played', (x) => s.sl[x].blanks, statsNum],
     ['Times stuck', (x) => s.sl[x].passes, statsNum],
     ['Fewest cards to win', (x) => s.sl[x].fewest, statsNum, 'lo'],
+  ])));
+
+  if (s.played.sw) out.push(section('Sharp Wits', duels([
+    ['Wins', (x) => s.sw[x].wins, statsNum, 'hi'],
+    ['Fastest Odd One Out', (x) => s.sw[x].spot, statsSecs, 'lo'],
+    ['Copycat: furthest level', (x) => s.sw[x].copy && s.sw[x].copy.n, statsNum, 'hi'],
+    ['Fastest True Colours', (x) => s.sw[x].ink, statsSecs, 'lo'],
+    ['Fastest Number Hunt', (x) => s.sw[x].hunt, statsSecs, 'lo'],
+    ['Wrong taps', (x) => s.sw[x].misses, statsNum],
   ])));
 
   const day = (at) => (at ? new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '');

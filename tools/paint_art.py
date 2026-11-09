@@ -558,3 +558,38 @@ def box_sl(W=360, H=480):
     save_rgba(s.rgba(), 'box-sl.png')
 
 box_sl()
+
+# ================= Sharp Wits =================
+# A bright idea over scattered dots: a cream bulb with ink rays on an ochre wash, and Copycat's
+# dots below, four of them joined by a red pencil trail in the order they lit up.
+def box_sw(W=360, H=480):
+    s = Sheet(W, H)
+    bx, by, br = 180, 150, 66
+    dots = [(70, 330, NAVY), (150, 300, RED), (236, 342, SAGE), (300, 290, NAVY), (106, 410, SAGE), (196, 418, RED), (286, 404, (244, 234, 212))]
+    reserve = disk(W, H, bx, by, br + 6) | rrect(W, H, bx - 30, by + br - 14, bx + 30, by + br + 40, 6)
+    for x, y, _ in dots:
+        reserve |= disk(W, H, x, y, 24)
+    s.wash(rrect(W, H, 8, 8, W - 8, H - 8, 10) & ~reserve, (212, 148, 50), strength=0.9, bloom=0.42, edge=0.7, gran=0.3, rough=0.05)
+    # the bulb: cream glass, a navy screw cap, ink outline and filament, rays all round
+    s.wash(disk(W, H, bx, by, br), (248, 236, 206), strength=0.35, bloom=0.5, rough=0.06)
+    s.wash(rrect(W, H, bx - 26, by + br - 6, bx + 26, by + br + 36, 5), NAVY, strength=0.85, edge=0.9, rough=0.05)
+    s.ink([circle_path(bx, by, br, 60, math.pi * 0.62, math.pi * 2.38)], width=3)
+    s.ink([[(bx - 26, by + br + 8), (bx + 26, by + br + 8)], [(bx - 26, by + br + 20), (bx + 26, by + br + 20)]], width=2, color=(244, 234, 212), alpha=0.8)
+    coil = [(bx - 16 + 32 * t / 40 + 5 * math.sin(t * math.pi / 5), by + 4 - 7 * math.cos(t * math.pi / 5)) for t in range(41)]
+    s.ink([[(bx - 12, by + br - 4), (bx - 16, by + 4)], [(bx + 12, by + br - 4), (bx + 16, by + 4)], coil], width=2.6, color=RED)
+    rays = []
+    for i in range(9):
+        a = math.pi * (0.95 + i * 1.1 / 8)
+        rays.append([(bx + (br + 14) * math.cos(a), by + (br + 14) * math.sin(a)), (bx + (br + 36) * math.cos(a), by + (br + 36) * math.sin(a))])
+    s.ink(rays, width=4.2)
+    # Copycat's dots, and the trail they lit up in
+    for x, y, col in dots:
+        s.wash(disk(W, H, x, y, 19), col, strength=0.9, edge=1.0, rough=0.08)
+        s.ink([circle_path(x, y, 20, 36)], width=2, alpha=0.7)
+    trail = [dots[i][:2] for i in (4, 1, 3, 5)]
+    s.ink([trail], width=6, color=RED, alpha=0.5, wobble=2)
+    splatter(s, RED, 6, (30, 24, 330, 70), 4)
+    splatter(s, NAVY, 5, (30, 450, 330, 466), 3)
+    save_rgba(s.rgba(), 'box-sw.png')
+
+box_sw()

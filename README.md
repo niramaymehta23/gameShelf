@@ -10,6 +10,10 @@ different places, one on Android and one on iPhone, and it plays the same on bot
 
 ## Latest updates
 
+- **Sharp Wits joins the shelf:** a box of four quick brain races. The RPS winner picks one and
+  you both play it at once, each phone timing its own player: Odd One Out (spot what changed
+  between two emoji pictures), Copycat (tap back a growing sequence of scattered dots), True
+  Colours (tap the paint, not the word) and Number Hunt (1 to 25 in order).
 - **Word Slam joins the shelf:** ten two-sided cards each, RPS for the opening play, then a
   free-for-all race to empty your hand. A checked fresh word rescues genuine dead ends without
   changing either hand. Older saved games keep their original rules.
@@ -93,6 +97,17 @@ The dot under your partner's name tells you where they are: **green** on the sam
   Save/resume, rematches, shelf scores and detailed stats work just like the other games.
   Existing saved games retain their original alternating-turn rules; new matches use the race.
   Inspired by the [original card rules](https://winning-moves.com/images/ScrabbleSlam_WebRules.pdf).
+- **Sharp Wits.** A box of four quick brain races. The rock, paper, scissors winner picks one, a
+  3-2-1 counts each phone in, and you both play the same seeded puzzles at once.
+  **Odd One Out**: two pictures of scattered emoji, one above the other; one thing differs (another
+  look-alike emoji, or one mirrored, turned or resized). Tap it in either picture. Ten pictures,
+  each busier than the last; the last four hide two changes. **Copycat**: seven dots scattered on
+  paper light up in order; tap them back. Three dots at level 1, one more each level, ten at level 8;
+  one wrong tap and you're out. Whoever gets further wins; level for level, whoever spent less time
+  tapping. **True Colours**: a colour word painted in another colour; tap the colour of the paint.
+  Twenty cards. **Number Hunt**: 1 to 25 jumbled on a grid; tap them in order. Each phone times its
+  own player and only while the game is on screen, so lag costs nobody; a wrong tap holds you up
+  for a moment, and the flag gives up.
 
 ## Around the table
 
@@ -103,7 +118,7 @@ The dot under your partner's name tells you where they are: **green** on the sam
 - **All the stats.** The little card pinned up beside *Pick a game*: drawn as charts, the head-to-head
   and each game's wins, your recent results, pies of your rock, paper, scissors habits, each
   game's records side by side (fewest discs to win, Battleships accuracy, fewest cards to win in Hues, the fastest
-  Quickfire word, the longest Word Wheel word, and Word Slam cards, blanks and times stuck) and a log of recent games. Worked out from the games' saved moves, so older games
+  Quickfire word, the longest Word Wheel word, Word Slam cards, blanks and times stuck, and the fastest Sharp Wits runs and furthest Copycat level) and a log of recent games. Worked out from the games' saved moves, so older games
   count too.
 - **Change your name.** On the shelf, or by joining the table again with the code under a new name.
 - **Reactions and notes.** Tap the chat button to send an emoji (it rains down on your partner's
@@ -310,7 +325,7 @@ DOC_SHOTS=1 node tests/e2e/phone-layout.mjs  # refresh README screenshots while 
 - `tests/unit/`: the game replays, Hues, Quickfire and Word Wheel rules (and every wheel's word list), the
   stats, Word Slam race/dead-end rules, and table history, run in Node.
   `replay.mjs` checks the older RPS, Connect Four, Battleships, Hues and Quickfire replay results
-  against a golden file. Word Wheel and Word Slam have their own rule and scenario tests.
+  against a golden file. Word Wheel, Word Slam and Sharp Wits have their own rule and scenario tests.
 - `tests/e2e/`: Playwright drives two phones at 390×844 through full games of everything, saving
   and quitting, chat, reconnecting and reloading. `phone-layout.mjs` checks all main screens at
   four phone sizes and prevents game feedback from leaking across matches. Screenshots land in

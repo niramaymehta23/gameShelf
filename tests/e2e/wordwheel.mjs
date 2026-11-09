@@ -57,9 +57,9 @@ const theirList = (p) => p.locator('.ww-col').nth(1).locator('li');
 try {
   await Promise.all([a, b].map((p) => p.goto(URL)));
   await setUpTable(a, b);
-  assert.equal(await a.locator('.cubby .gbox').count(), 6);
+  assert.equal(await a.locator('.cubby .gbox').count(), 7);
   await snap(a, 'ww-01-shelf');
-  ok('Word Wheel is available among the six games on the shelf');
+  ok('Word Wheel is available among the seven games on the shelf');
 
   // ---- open it, RPS, the winner spins ----
   await a.locator('.gbox.ww').click(); await a.locator('#sheet').getByRole('button', { name: 'Play Word Wheel' }).click();
