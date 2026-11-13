@@ -21,7 +21,7 @@ window.SabhaGames = window.SabhaGames || {};
     square: '<rect x="13" y="13" width="74" height="74" rx="3"/>',
     star: `<polygon points="${STAR}"/>`,
     heart: '<path d="M50 88 C20 66 7 50 7 32 C7 18 18 9 30 9 C40 9 46 15 50 23 C54 15 60 9 70 9 C82 9 93 18 93 32 C93 50 80 66 50 88 Z"/>',
-    moon: '<path d="M62 8 A42 42 0 1 0 62 92 A34 34 0 1 1 62 8 Z"/>',
+    moon: '<path d="M51.9 10.2 A40 40 0 1 0 83.8 67.8 A33 33 0 0 1 51.9 10.2 Z"/>',
     diamond: '<polygon points="50,5 90,50 50,95 10,50"/>',
     cross: '<polygon points="37,8 63,8 63,37 92,37 92,63 63,63 63,92 37,92 37,63 8,63 8,37 37,37"/>',
   };

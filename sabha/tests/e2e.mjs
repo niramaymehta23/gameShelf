@@ -13,7 +13,7 @@ process.env.NO_SAVE = '1';
 const { start, rooms } = require('../server/index.js');
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
-const SHOTS = path.join(DIR, 'screens', 'e2e');
+const SHOTS = path.join(DIR, 'screens', process.env.PHONE ? 'e2e-' + process.env.PHONE : 'e2e');
 mkdirSync(SHOTS, { recursive: true });
 const ONLY = process.env.ONLY ? process.env.ONLY.split(',') : null;
 const want = k => !ONLY || ONLY.includes(k);
@@ -26,7 +26,8 @@ const { server } = await start(0);
 const URL = `http://localhost:${server.address().port}`;
 const browser = await chromium.launch({ headless: !process.env.HEADED });
 const pageErrors = [];
-async function newPage(url, size = { width: 390, height: 844 }, reuse = null) {
+const [PW, PH] = (process.env.PHONE || '390x844').split('x').map(Number); // PHONE=320x640 for a small phone
+async function newPage(url, size = { width: PW, height: PH }, reuse = null) {
   const ctx = reuse || await browser.newContext({ viewport: size, deviceScaleFactor: 1, hasTouch: true });
   const page = await ctx.newPage();
   page.on('pageerror', e => pageErrors.push(`${url}: ${e.message}`));

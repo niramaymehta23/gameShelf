@@ -137,3 +137,7 @@ the ones I could not decide for you.
     five 390×844 phones playing every game through the real screens.
 50. The bot test speeds the game clock up 10× but keeps heartbeats on real time, so in it a dropped phone
     stalls Maths Chain for longer (in game time) than it would on the night.
+51. **Short phones (height ≤ 700 px, e.g. iPhone SE)**: the shared keypad squeezes to 52 px keys (46 px
+    under 600 px) so its bottom row (0, Send/Check) stays on screen without scrolling. The spec asks for
+    ≥ 64 px targets; on those phones fitting the whole keypad mattered more. Checked at 320×640, 375×667
+    and 390×844 (`PHONE=320x640 npm run test:e2e`).
