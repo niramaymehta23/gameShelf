@@ -148,4 +148,58 @@ test('DSI counter logs events outside the championship', () => {
   assert.strictEqual(scoring.championship(t.room).total.red, 0);
 });
 
+test('replaying a round removes its MVP stats and gives it a new seed', () => {
+  const t = setup({ red: 2, blue: 2 });
+  t.startGame('demo'); t.startRound();
+  const seed = t.room.current.seg.seed;
+  for (let i = 0; i < 3; i++) t.act(t.ids.red[0], { type: 'tap' });
+  t.finishRound();
+  assert.strictEqual(t.room.stats[t.ids.red[0]].demo.taps, 3);
+  t.host({ cmd: 'replayRound' });
+  assert.ok(!t.room.stats[t.ids.red[0]]);
+  t.startRound();
+  assert.notStrictEqual(t.room.current.seg.seed, seed);
+  t.act(t.ids.red[0], { type: 'tap' });
+  t.finishRound();
+  assert.strictEqual(t.room.stats[t.ids.red[0]].demo.taps, 1);
+});
+
+test('undo in Don\'t Say It never undoes an undo', () => {
+  const t = setup({ red: 1, blue: 1 });
+  t.host({ cmd: 'dsi' });
+  t.host({ cmd: 'dsiPoint', team: 'red', delta: 1 }); t.host({ cmd: 'dsiPoint', team: 'red', delta: 1 });
+  t.host({ cmd: 'dsiUndo' }); t.host({ cmd: 'dsiUndo' }); t.host({ cmd: 'dsiUndo' });
+  assert.strictEqual(t.room.dsiState().points.red, 0);
+});
+
+test('a player moved mid-round keeps the round\'s team and seat until it ends; host events survive a game replay', () => {
+  const t = setup({ red: 3, blue: 3 });
+  t.startGame('demo'); t.startRound();
+  const p = t.ids.red[0];
+  t.host({ cmd: 'move', pid: p, team: 'blue' });
+  assert.strictEqual(t.state(p).me.team, 'red');
+  assert.strictEqual(t.state(p).me.seat, 1);
+  t.finishRound();
+  assert.strictEqual(t.state(p).me.team, 'blue');
+  t.host({ cmd: 'toReady' }); t.host({ cmd: 'game', game: 'demo' });
+  assert.ok(t.events.some(e => e.type === 'host_move'));
+});
+
+test('handover: two requests both wait; a phone that blinked can collect its answer; cancel', () => {
+  const t = setup({ red: 2, blue: 1 });
+  const target = t.room.players[t.ids.red[0]];
+  t.room.join(target.name, 'q1'); t.room.join(target.name, 'q2'); t.room.join(target.name, 'q3');
+  assert.strictEqual(t.room.handovers.length, 3);
+  assert.ok(t.room.pendingStatus('q1').pending);
+  t.room.cancelHandover('q3');
+  assert.ok(t.room.pendingStatus('q3').error);
+  t.host({ cmd: 'handover', id: 'q1', yes: true });
+  assert.strictEqual(t.room.pendingStatus('q1').creds.playerId, target.id);
+  assert.strictEqual(t.room.pendingStatus('q1').creds.token, target.token);
+  t.host({ cmd: 'handover', id: 'q2', yes: false });
+  assert.notStrictEqual(t.room.pendingStatus('q2').creds.playerId, target.id);
+  const r2 = require('../../server/room').Room.fromJSON(JSON.parse(JSON.stringify(t.room.toJSON())), {});
+  assert.strictEqual(r2.pendingStatus('q1').creds.playerId, target.id);
+});
+
 console.log(`core: ${n} tests passed`);

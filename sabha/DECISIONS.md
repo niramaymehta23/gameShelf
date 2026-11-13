@@ -141,3 +141,22 @@ the ones I could not decide for you.
     under 600 px) so its bottom row (0, Send/Check) stays on screen without scrolling. The spec asks for
     ≥ 64 px targets; on those phones fitting the whole keypad mattered more. Checked at 320×640, 375×667
     and 390×844 (`PHONE=320x640 npm run test:e2e`).
+
+## After an independent code review
+
+52. **Shout It Out: a wrong press also locks that phone's buttons for 3 s** (on top of the spec's −2).
+    Without it, blind mashing scored more than playing properly (a team of 10 mashing: +7,500 raw a
+    round). With it, mashing scores ~1,600 against ~7,000+ for a team that listens. Alternative: a bigger
+    penalty (−5) and no lock; I kept the spec's −2 and matched the other games' lockouts.
+53. **MVP stats are rebuilt from the finished rounds**, so "Replay this round" can't double-count them.
+54. **A replayed or interrupted round gets a new seed** (new chain, new names): everyone has already heard
+    the old answers. The second half of a turn-based Shout round keeps its first half's seed.
+55. **Don't Say It "Undo last tap"** skips undos and already-undone taps.
+56. **A player the host moves mid-round** keeps playing that round for their old team (their phone keeps
+    the old colour and seat) and switches when it ends.
+57. **Host moves/removals/handovers are tagged as lobby events**, so replaying a game doesn't delete them
+    from the audit.
+58. **Handover**: the waiting phone remembers its request, so a reload, a Wi-Fi blip or a server restart
+    doesn't strand it; it can Cancel; two requests for the same name both wait for the host.
+59. **The host page holds its redraw while a finger is down** (it redraws up to 4× a second in busy rounds,
+    which could swallow a tap on Pause or End round).

@@ -59,6 +59,7 @@ class Room {
     this.current = null;        // {game, opts, rounds, idx} plus, while a segment runs: seg
     this.pause = { total: 0, at: null };
     this.handovers = [];        // pending "Is this Ravi (Red #4)?" prompts
+    this.answers = {};          // reqId → {room, playerId, token, at}: kept so a phone that blinked can still collect it
     this.stats = {};            // pid → gameId → key → number (merged from a segment when it ends)
     this.dsi = { turn: null, turns: { red: 0, blue: 0 }, next: 'red' };
     this.adjustments = [];
@@ -124,7 +125,6 @@ class Room {
     if (this.locked) {
       const same = this.findByName(name);
       if (same && reqId) {
-        this.handovers = this.handovers.filter(h => h.targetId !== same.id);
         this.handovers.push({ id: reqId, name, targetId: same.id, at: this.clock() });
         this.markHost(); this.flush();
         return { pending: reqId };
@@ -136,6 +136,18 @@ class Room {
     const p = this.newPlayer(name);
     this.markHost(); this.saveSoon(); this.flush();
     return { player: p };
+  }
+
+  // A phone waiting on "Is this you?" reconnected: its answer, or still waiting, or gone.
+  pendingStatus(reqId) {
+    const a = this.answers[reqId];
+    if (a) { const { at, ...creds } = a; return { creds }; }
+    if (this.handovers.some(h => h.id === reqId)) return { pending: true };
+    return { error: 'gone' };
+  }
+  cancelHandover(reqId) {
+    this.handovers = this.handovers.filter(h => h.id !== reqId);
+    this.markHost(); this.flush();
   }
 
   pickTeam(pid, team) {
@@ -245,7 +257,7 @@ class Room {
     // starting a game again replays it from scratch
     this.events = this.events.filter(e => e.game !== gameId || e.segId === 'manual');
     this.segments = this.segments.filter(s => s.game !== gameId);
-    for (const pid in this.stats) delete this.stats[pid][gameId];
+    this.rebuildStats();
     this.current = { game: gameId, opts, rounds, idx: 0, seg: null };
     this.final = null;
     this.phase = 'intro';
@@ -305,24 +317,13 @@ class Room {
     }
     let res = {};
     this.safe(() => { res = (seg.inst.end && seg.inst.end(reason)) || {}; });
-    // merge per-player stats tracked during the segment
-    if (!seg.practice) {
-      for (const pid in seg.stats) {
-        const g = ((this.stats[pid] = this.stats[pid] || {})[seg.game] = this.stats[pid][seg.game] || {});
-        for (const k in seg.stats[pid]) {
-          const s = seg.stats[pid][k];
-          if (s.dir === 'add') g[k] = (g[k] || 0) + s.v;
-          else if (g[k] == null || (s.dir === 'min' ? s.v < g[k] : s.v > g[k])) g[k] = s.v;
-        }
-      }
-    }
     const mod = GAMES[seg.game];
     const result = {
       segId: seg.segId, roundId: seg.roundId, game: seg.game, n: seg.n, label: seg.label, practice: seg.practice,
       teams: seg.teams, teamSize: seg.teamSize, seed: seg.seed, endedBy: reason || 'time',
       startedAt: seg.startsAt, endedAt: this.now(),
       lines: res.lines || {}, stats: res.stats || {}, tiebreak: res.tiebreak || null, fun: res.fun || {},
-      raw: {}, score: {},
+      raw: {}, score: {}, pstats: seg.practice ? {} : seg.stats,
     };
     for (const t of seg.teams) {
       const raw = this.events.filter(e => e.segId === seg.segId && e.team === t).reduce((s, e) => s + e.points, 0);
@@ -330,6 +331,7 @@ class Room {
       result.score[t] = seg.practice ? 0 : (mod.normalise ? Math.round(raw * 10 / Math.max(1, seg.teamSize[t])) : raw);
     }
     this.segments.push(result);
+    this.rebuildStats();
     cur.seg = null;
     cur.idx++;
     this.phase = 'time';
@@ -337,6 +339,23 @@ class Room {
     if (cur.idx >= cur.rounds.length) this.games[cur.game].status = 'done';
     this.markAll();
     this.save();
+  }
+
+  // Per-player stats (MVPs) are always rebuilt from the finished segments, so a replayed or discarded
+  // round can never leave anything behind.
+  rebuildStats() {
+    const out = {};
+    for (const r of this.segments) {
+      for (const pid in r.pstats || {}) {
+        const g = ((out[pid] = out[pid] || {})[r.game] = out[pid][r.game] || {});
+        for (const k in r.pstats[pid]) {
+          const x = r.pstats[pid][k];
+          if (x.dir === 'add') g[k] = (g[k] || 0) + x.v;
+          else if (g[k] == null || (x.dir === 'min' ? x.v < g[k] : x.v > g[k])) g[k] = x.v;
+        }
+      }
+    }
+    this.stats = out;
   }
 
   // Pushes the room forward on its own: countdown → live, the buzzer, offline players, "Time!" → results.
@@ -365,8 +384,8 @@ class Room {
   // ---------- what a game sees ----------
   makeCtx(seg, mod) {
     const room = this;
-    const teamOf = {};
-    for (const t of TEAMS) for (const p of seg.roster[t]) teamOf[p.id] = t;
+    const teamOf = {}, seatOf = {};
+    for (const t of TEAMS) for (const p of seg.roster[t]) { teamOf[p.id] = t; seatOf[p.id] = p.seat; }
     const stat = (pid, key, v, dir) => {
       if (seg.practice) return;
       const s = (seg.stats[pid] = seg.stats[pid] || {});
@@ -382,7 +401,8 @@ class Room {
       // teams: {red: [{id, name, seat}], blue: [...]}, sorted by seat; empty for a team not playing this segment
       teams: { red: seg.roster.red.slice(), blue: seg.roster.blue.slice() },
       teamOf: pid => teamOf[pid] || null,
-      player: pid => { const p = room.players[pid]; return p ? { id: p.id, name: p.name, seat: p.seat, team: teamOf[pid] || p.team } : null; },
+      // a player the host moves mid-round keeps this round's team and seat until the round ends
+      player: pid => { const p = room.players[pid]; return p ? { id: p.id, name: p.name, seat: seatOf[pid] != null ? seatOf[pid] : p.seat, team: teamOf[pid] || p.team } : null; },
       rng: (label = '') => rng(seg.seed, label),
       now: () => room.now(),
       startsAt: seg.startsAt,
@@ -415,6 +435,14 @@ class Room {
       locked: this.locked,
     };
     if (p.removed) return { ...base, phase: 'removed' };
+    // moved by the host during a round: the phone stays in this round's team colour and seat until it ends
+    const live = this.current && this.current.seg;
+    if (live && ['countdown', 'live'].includes(this.phase) && live.ids.has(pid)) {
+      for (const t of TEAMS) {
+        const r = live.roster[t].find(x => x.id === pid);
+        if (r && t !== p.team) { base.me = { ...base.me, team: t, seat: r.seat, movingTo: p.team }; }
+      }
+    }
     if (this.phase === 'lobby' || this.phase === 'ready' || !p.team) return base;
     const cur = this.current;
     const mod = cur && GAMES[cur.game];
@@ -536,13 +564,19 @@ class Room {
       phase = seg.idx === 0 ? 'intro' : 'results';
       events = events.filter(e => e.segId !== seg.segId);
     }
+    let games = this.games;
+    if (seg && !this.segments.some(x => x.roundId === seg.roundId)) {
+      games = JSON.parse(JSON.stringify(this.games));
+      delete games[seg.game].seeds[seg.roundId]; // an interrupted round is replayed with new content
+    }
     if (phase === 'time') phase = cur && cur.idx >= cur.rounds.length ? 'gameover' : 'results';
     return {
       v: 1, code: this.code, hostToken: this.hostToken, created: this.created, touched: this.touched,
       players: Object.fromEntries(Object.entries(this.players).map(([id, p]) => [id, { ...p, online: false }])),
-      locked: this.locked, events, segments: this.segments, games: this.games, options: this.options,
+      locked: this.locked, events, segments: this.segments, games, options: this.options,
       phase, current: cur ? { game: cur.game, opts: cur.opts, idx: cur.idx } : null,
       stats: this.stats, dsi: { ...this.dsi, turn: null }, adjustments: this.adjustments, final: this.final, nextEvent: this._nextEvent,
+      handovers: this.handovers, answers: this.answers,
     };
   }
   static fromJSON(d, opts) {
@@ -550,8 +584,10 @@ class Room {
     Object.assign(r, {
       created: d.created, touched: d.touched, players: d.players, locked: d.locked, events: d.events, segments: d.segments,
       games: d.games, options: d.options, phase: d.phase, stats: d.stats, dsi: d.dsi, adjustments: d.adjustments || [], final: d.final,
+      handovers: d.handovers || [], answers: d.answers || {},
       _nextEvent: d.nextEvent || (d.events.length + 1),
     });
+    r.rebuildStats();
     // a restart is not anyone's fault: give everyone a fresh 10 s before they count as offline
     for (const p of Object.values(r.players)) { p.online = false; p.lastSeen = r.wall(); }
     if (d.current && GAMES[d.current.game]) {
@@ -581,7 +617,7 @@ const HOST_CMDS = {
     p.team = team; p.waiting = false;
     if (this.locked) {
       p.seat = this.nextSeat(team);
-      this.award(team, [pid], 'host_move', 0, `Host moved ${p.name} ${from ? 'from ' + TEAM_NAME[from] + ' ' : ''}to ${TEAM_NAME[team]} #${p.seat}`, { segId: 'lobby' });
+      this.award(team, [pid], 'host_move', 0, `Host moved ${p.name} ${from ? 'from ' + TEAM_NAME[from] + ' ' : ''}to ${TEAM_NAME[team]} #${p.seat}`, { segId: 'lobby', game: 'lobby' });
     }
     this.markPlayer(pid); this.saveSoon();
   },
@@ -591,7 +627,7 @@ const HOST_CMDS = {
     if (!p) throw new Error('No such player.');
     this.setOffline(p);
     p.removed = true;
-    if (this.locked) this.award(p.team, [pid], 'host_remove', 0, `Host removed ${p.name}`, { segId: 'lobby' });
+    if (this.locked) this.award(p.team, [pid], 'host_remove', 0, `Host removed ${p.name}`, { segId: 'lobby', game: 'lobby' });
     this.out.player(pid, 'state', this.playerState(pid));
     this.saveSoon();
   },
@@ -612,14 +648,16 @@ const HOST_CMDS = {
     if (yes && target && !target.removed) {
       target.token = token();
       this.out.kick(target.id);
-      this.award(target.team, [target.id], 'host_handover', 0, `${target.name} moved to a new phone`, { segId: 'lobby' });
-      this.out.req(h.id, 'joined', { room: this.code, playerId: target.id, token: target.token });
+      this.award(target.team, [target.id], 'host_handover', 0, `${target.name} moved to a new phone`, { segId: 'lobby', game: 'lobby' });
+      this.answers[h.id] = { room: this.code, playerId: target.id, token: target.token, at: this.wall() };
     } else {
       const p = this.newPlayer(h.name, { waiting: true });
-      this.out.req(h.id, 'joined', { room: this.code, playerId: p.id, token: p.token });
+      this.answers[h.id] = { room: this.code, playerId: p.id, token: p.token, at: this.wall() };
       this.markAll();
     }
-    this.saveSoon();
+    const { at, ...creds } = this.answers[h.id];
+    this.out.req(h.id, 'joined', creds);
+    this.save();
   },
   option({ shoutMode }) {
     if (shoutMode && ['simultaneous', 'turn'].includes(shoutMode)) this.options.shoutMode = shoutMode;
@@ -655,7 +693,10 @@ const HOST_CMDS = {
     const last = this.segments[this.segments.length - 1];
     if (!last || last.game !== cur.game) throw new Error('Nothing to replay.');
     this.segments.pop();
+    this.rebuildStats();
     this.events = this.events.filter(e => e.segId !== last.segId);
+    // a fresh seed: everyone has already heard this round's answers shouted
+    if (!this.segments.some(x => x.roundId === last.roundId)) delete this.games[cur.game].seeds[last.roundId];
     cur.idx = cur.rounds.findIndex((r, i) => i >= 0 && `${cur.game}-${r.practice ? 'practice' : r.n}` === last.roundId && (r.teams || TEAMS).join() === last.teams.join());
     if (cur.idx < 0) cur.idx = 0;
     this.games[cur.game].status = 'playing';
@@ -703,8 +744,11 @@ const HOST_CMDS = {
     this.markAll(); this.saveSoon();
   },
   dsiUndo() {
-    for (let i = this.events.length - 1; i >= 0; i--) if (this.events[i].game === 'dsi') {
+    // undo the latest tap that isn't an undo and hasn't been undone already
+    for (let i = this.events.length - 1; i >= 0; i--) {
       const e = this.events[i];
+      if (e.game !== 'dsi' || e.type === 'dsi_undo' || e.undone) continue;
+      e.undone = true;
       this.award(e.team, [], 'dsi_undo', -e.points, `Undo: ${e.detail}`, { segId: 'dsi', game: 'dsi' });
       break;
     }

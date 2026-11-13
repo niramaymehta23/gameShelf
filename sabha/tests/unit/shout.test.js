@@ -128,6 +128,28 @@ test('wrong press costs 2; pressing someone else\'s button id is ignored', () =>
   assert.strictEqual(t.room.events.length, n0);
 });
 
+test('a wrong press locks that phone for 3 s, so mashing loses points', () => {
+  const t = begin({ red: 3, blue: 3 });
+  const p = t.ids.red[0];
+  const asked = () => new Set(Object.values(S(t).red.instr).map(i => i.button));
+  const free = buttonsOf(t, p).find(b => !asked().has(b.id));
+  t.act(p, { type: 'press', button: free.id });
+  assert.ok(t.view(p).lockUntil > t.room.now());
+  const n0 = t.room.events.length;
+  t.advance(1000);
+  for (const b of buttonsOf(t, p)) t.act(p, { type: 'press', button: b.id });
+  assert.strictEqual(t.room.events.filter(e => e.segId && e.type !== 'instruction_timeout').length - t.room.events.slice(0, n0).filter(e => e.segId && e.type !== 'instruction_timeout').length, 0, 'presses ignored while locked');
+  t.advance(2100);
+  const free2 = buttonsOf(t, p).find(b => !asked().has(b.id));
+  if (free2) { t.act(p, { type: 'press', button: free2.id }); assert.strictEqual(t.room.events[t.room.events.length - 1].type, 'wrong_press'); }
+  // mashing a whole team: every phone presses its 4 buttons over and over without listening
+  const m = begin({ red: 10, blue: 10 });
+  for (let s = 0; s < 170; s++) { for (const id of m.ids.red) { const bs = buttonsOf(m, id); m.act(id, { type: 'press', button: bs[s % 4].id }); } m.advance(1000); }
+  const raw = m.room.events.filter(e => e.segId === 'shout-1' && e.team === 'red').reduce((a, e) => a + e.points, 0);
+  const hits = m.room.events.filter(e => e.segId === 'shout-1' && e.team === 'red' && e.points > 0).length;
+  assert.ok(raw < 3000, `mashing should score far below honest play (got ${raw}, ${hits} hits)`);
+});
+
 test('timer levels 12/9/7 s and the 2:00 rename', () => {
   const t = begin({ red: 4, blue: 4 });
   assert.strictEqual(pending(t, t.ids.red[0]).timer, 12000);

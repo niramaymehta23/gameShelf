@@ -51,7 +51,9 @@ export async function playShout({ phones, room, sleep, until, shot, hits = 6 }) 
 
 // ---------- Pair Hunt ----------
 // Teammates with the same symbol name find each other; one shows their code, the other types it.
-const typeCode = async (p, code) => { for (const d of String(code)) await p.locator(`.kp-key[data-key="${d}"]`).dispatchEvent('pointerdown'); };
+const typeCode = async (p, code) => {
+  for (let i = 0; i < 60 && await p.locator('.keypad.locked').count(); i++) await new Promise(r => setTimeout(r, 100));
+  for (const d of String(code)) await p.locator(`.kp-key[data-key="${d}"]`).dispatchEvent('pointerdown'); };
 export async function playPairHunt({ phones, room, sleep, until, shot, rounds = 2 }) {
   const teams = await Promise.all(phones.map(p => p.evaluate(() => document.body.dataset.team)));
   const hunting = p => p.locator('.ph-hunt').isVisible();
@@ -95,6 +97,7 @@ function apply(v, text) {
   return { 'Double it': v * 2, 'Half it': v / 2, 'Add the digits': String(v).split('').reduce((a, d) => a + Number(d), 0), 'Square it': v * v }[text.trim()];
 }
 async function answer(p, value) {
+  for (let i = 0; i < 60 && await p.locator('.keypad.locked').count(); i++) await new Promise(r => setTimeout(r, 100)); // wait out a lock
   for (const d of String(value)) await p.locator(`.kp-key[data-key="${d}"]`).dispatchEvent('pointerdown');
   await p.locator('.kp-send').dispatchEvent('pointerdown');
 }
@@ -124,7 +127,7 @@ export async function playMaths({ phones, room, sleep, until, shot }) {
         await answer(p, v + 1);
         await until(() => p.locator('.mc-wrong').count().then(n => n > 0), 3000, 'wrong answer message');
         await shot(p, 'maths-2-wrong');
-        await sleep(3200);
+        await sleep(3200); // (answer() also waits until the keypad unlocks)
       }
       await answer(p, v);
       await until(() => p.locator('.mc-answer').count().then(n => n > 0), 4000, 'done screen with the answer');

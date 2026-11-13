@@ -27,6 +27,7 @@ for (let c = 0; c < COLOURS.length; c++) for (let o = 0; o < OBJECTS.length; o++
 const PER_PHONE = 4;
 const HALF = 72;                 // first set of names from [0, 72), renamed set from [72, 144): up to 18 players
 const GRACE_MS = 300;
+const WRONG_LOCK_MS = 3000;      // a wrong press greys that phone's buttons for 3 s, so mashing loses points
 const NEXT_AFTER_HIT = 1000;     // instructor gets a new instruction 1 s after a success
 const NEXT_AFTER_TIMEOUT = 700;  // long enough for the red flash to be seen
 const TWIST_AT = 120000;         // 2:00: "Controls changed!"
@@ -76,6 +77,7 @@ module.exports = {
         instr: {},        // instructor pid → {id, button, holder, issuedAt, deadline, timer}
         nextAt: {},       // instructor pid → game time they may get the next one
         last: {},         // instructor pid → last button asked for (avoid asking twice running)
+        lockUntil: {},    // holder pid → game time their buttons work again after a wrong press
         hits: 0, timeouts: 0, wrong: 0, seq: 0,
       };
       roster.forEach((p, i) => {
@@ -159,6 +161,7 @@ module.exports = {
         instr: i ? { id: i.id, text: label(btn(st, i.button).n), deadline: i.deadline, timer: i.timer, issuedAt: i.issuedAt } : null,
         waiting: !i && (st.nextAt[pid] == null || ctx.now() >= st.nextAt[pid]),
         renamedAt,
+        lockUntil: st.lockUntil[pid] || 0,
         practice: !!ctx.practice,
       };
     }
@@ -177,6 +180,7 @@ module.exports = {
         const mine = st.buttons[pid].find(b => b.id === a.button);
         if (!mine) return; // not one of this phone's buttons: ignore (stale tap or forged)
         const now = ctx.now();
+        if (st.lockUntil[pid] && now < st.lockUntil[pid]) return; // locked after a wrong press
         let hitBy = null;
         for (const ip in st.instr) {
           const ins = st.instr[ip];
@@ -186,6 +190,8 @@ module.exports = {
           st.wrong++;
           ctx.award(team, [pid], 'wrong_press', -2, `pressed ${label(mine.n)}: nobody asked for it`);
           ctx.track(pid, 'wrongPresses');
+          st.lockUntil[pid] = now + WRONG_LOCK_MS;
+          ctx.push(pid);
           ctx.fx(pid, { kind: 'bad' });
           ctx.fx(pid, { game: 'shout', type: 'tileBad', button: mine.id });
           return;

@@ -28,13 +28,27 @@ function boot() {
   Net.socket.on('state', s => onState(s));
   Net.socket.on('fx', d => onFx(d));
   Net.socket.on('replaced', () => { P.replaced = true; P.creds = null; render(); });
-  Net.socket.on('joined', c => { P.pending = false; saveCreds(c); P.creds = c; hello(); });
-  Net.on('connect', () => { if (P.creds) hello(); renderConn(); });
+  Net.socket.on('joined', c => { clearPending(); saveCreds(c); P.creds = c; hello(); });
+  Net.on('connect', () => { if (P.creds) hello(); else if (P.pending) recheckPending(); renderConn(); });
   Net.on('disconnect', renderConn);
   P.creds = P.room ? store.get(credsKey(P.room)) : null;
+  if (!P.creds && P.room && store.get(pendingKey(P.room))) P.pending = store.get(pendingKey(P.room));
   P.hbTimer = setInterval(() => { if (P.creds && Net.connected) Net.socket.emit('hb'); }, 3000);
   setInterval(tick, 200);
   render();
+}
+
+// waiting for the host to say whether this is the same person on a new phone
+function pendingKey(room) { return skey('pending:' + room); }
+function clearPending() { if (P.room) store.del(pendingKey(P.room)); P.pending = false; }
+async function recheckPending() {
+  const r = await Net.call('p:pending', { room: P.room, reqId: P.pending });
+  if (r && r.creds) { clearPending(); saveCreds(r.creds); P.creds = r.creds; hello(); }
+  else if (!r || r.error) { clearPending(); render(); }
+}
+async function cancelPending() {
+  await Net.call('p:cancel', { room: P.room, reqId: P.pending });
+  clearPending(); render();
 }
 
 async function hello() {
@@ -84,7 +98,9 @@ function render() {
   const root = app();
   const st = P.state;
   if (P.replaced) return show('replaced', () => screen('', [h('h1', { text: 'You are playing on another phone now.' }), h('p.sub', { text: 'This phone has been handed over by the host.' })]));
-  if (P.pending) return show('pending', () => screen('', [h('h1', { text: 'Asking the host…' }), h('p.sub', { text: 'Someone with your name is already playing. The host will check it is you on a new phone.' })]));
+  if (P.pending) return show('pending', () => screen('', [h('h1', { text: 'Asking the host…' }),
+    h('p.sub', { text: 'Someone with your name is already playing. The host will check it is you on a new phone.' }),
+    h('button.link', { onclick: cancelPending, text: 'Cancel' })]));
   if (!P.room) return show('code', codeScreen);
   if (!P.creds) return show('join:' + P.room, joinScreen);
   if (!st) return show('loading', () => screen('', [h('p.sub', { text: 'Connecting…' })]));
@@ -167,7 +183,7 @@ function joinScreen() {
     const r = await Net.call('p:join', { room: P.room, name });
     busy = false;
     if (!r || r.error) { err.textContent = (r && r.error) || 'Could not join. Try again.'; return; }
-    if (r.pending) { P.pending = true; render(); return; }
+    if (r.pending) { P.pending = r.reqId; store.set(pendingKey(P.room), r.reqId); render(); return; }
     saveCreds(r); P.creds = r;
     await hello();
     if (team) await Net.call('p:team', { team });

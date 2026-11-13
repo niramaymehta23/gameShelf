@@ -68,7 +68,16 @@ async function newSession() {
 }
 
 // ---------- render ----------
+// The host screen is rebuilt on every push; a rebuild between finger-down and finger-up would swallow the
+// tap, so while a finger is down the rebuild waits until just after it lifts (and the click has fired).
+let pressing = false, deferred = false;
+document.addEventListener('pointerdown', () => { pressing = true; }, { capture: true });
+const release = () => { if (!pressing) return; pressing = false; if (deferred) { deferred = false; setTimeout(hrender, 30); } };
+document.addEventListener('pointerup', release, { capture: true });
+document.addEventListener('pointercancel', release, { capture: true });
+
 function hrender() {
+  if (pressing && H.state && H.room) { deferred = true; return; }
   const s = H.state;
   if (!H.room || !s) {
     if (H.key === 'start') return;

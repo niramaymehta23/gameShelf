@@ -32,7 +32,11 @@ function transport(code) {
     player: (pid, ev, data) => io.to(P(pid)).emit(ev, data),
     team: (team, ev, data) => {
       const room = rooms.get(code); if (!room) return;
-      const ids = Object.values(room.players).filter(p => p.team === team && !p.removed).map(p => P(p.id));
+      // during a round, a team is the round's roster (someone moved mid-round still plays for their old team)
+      const seg = room.current && room.current.seg;
+      const ids = (seg && ['countdown', 'live'].includes(room.phase) && seg.teams.includes(team)
+        ? seg.roster[team].map(p => P(p.id))
+        : Object.values(room.players).filter(p => p.team === team && !p.removed).map(p => P(p.id)));
       if (ids.length) io.to(ids).emit(ev, data);
     },
     all: (ev, data) => io.to(`r:${code}`).emit(ev, data),
@@ -159,8 +163,20 @@ function wire(socket) {
     socket.join(`q:${room.code}:${reqId}`);
     const r = room.join(name, reqId);
     if (r.error) return ack(cb)({ error: r.error });
-    if (r.pending) return ack(cb)({ pending: true });
+    if (r.pending) return ack(cb)({ pending: true, reqId });
     ack(cb)({ room: room.code, playerId: r.player.id, token: r.player.token });
+  });
+  // a phone waiting for the host's "Is this you?" answer reconnects, or gives up
+  socket.on('p:pending', ({ room: code, reqId } = {}, cb) => {
+    const room = roomOf(code);
+    if (!room || !reqId) return ack(cb)({ error: 'gone' });
+    socket.join(`q:${room.code}:${reqId}`);
+    ack(cb)(room.pendingStatus(String(reqId)));
+  });
+  socket.on('p:cancel', ({ room: code, reqId } = {}, cb) => {
+    const room = roomOf(code);
+    if (room && reqId) room.cancelHandover(String(reqId));
+    ack(cb)({ ok: true });
   });
   const mine = () => { const room = socket.data.room && rooms.get(socket.data.room); return room && socket.data.pid ? room : null; };
   socket.on('p:team', ({ team } = {}, cb) => { const room = mine(); ack(cb)(room ? room.pickTeam(socket.data.pid, team) : { error: 'Not joined.' }); });

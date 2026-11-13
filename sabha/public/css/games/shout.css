@@ -37,3 +37,7 @@
 .so-banner b { font-family: var(--display); font-weight: 400; font-size: 38px; color: var(--team, var(--ink)); }
 .so-banner span { font-weight: 700; font-size: 18px; }
 @keyframes so-banner { from { transform: scale(.8); opacity: 0; } }
+/* after a wrong press the tiles grey out for 3 s */
+.so-tiles { position: relative; }
+.so-tiles.locked .so-tile { opacity: .35; filter: grayscale(.7); }
+.so-tiles.locked::after { content: attr(data-wait); position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: rgba(20, 24, 34, .9); color: #fff; font-weight: 800; font-size: 20px; padding: 12px 16px; border-radius: 12px; white-space: nowrap; pointer-events: none; }

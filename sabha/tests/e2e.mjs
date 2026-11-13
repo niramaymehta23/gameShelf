@@ -89,6 +89,23 @@ await host.locator('.hsec', { hasText: 'Waiting for a team' }).getByRole('button
 await waitText(late, /Blue[\s\S]*#\s*3/);
 log('late joiner assigned');
 
+// Ravi's phone dies: he types his name on a new phone, the page reloads while waiting, the host says yes
+const ravi2 = await newPage(`/?r=${CODE}&as=8`);
+await ravi2.fill('input.text-in', 'Ravi');
+await ravi2.getByRole('button', { name: 'Join', exact: true }).click();
+await waitText(ravi2, /Asking the host/);
+await ravi2.reload();
+await waitText(ravi2, /Asking the host/);
+await shot(ravi2, '02b-asking-host');
+await waitText(host, /Is this Ravi \(Red #1\)\?/);
+await shot(host, '02c-host-handover');
+await host.getByRole('button', { name: 'Yes, hand over' }).click();
+await waitText(ravi2, /Ravi · Red #1/);
+await waitText(phones[0], /another phone/);
+await phones[0].context().close();
+phones[0] = ravi2;
+log('handover ok');
+
 const cmd = c => host.evaluate(c => window.cmd(c), c);
 const hostClick = async name => { await host.getByRole('button', { name, exact: false }).first().click(); };
 const allPhones = () => [...phones, late];
@@ -105,7 +122,7 @@ if (want('core')) {
   await waitText(phones[1], /\b3\b/);
   // reconnect: Ravi's tab closes and reopens mid-round
   const ctx0 = phones[0].context(); await phones[0].close();
-  phones[0] = await newPage(`/?as=1`, null, ctx0);
+  phones[0] = await newPage(`/?as=8`, null, ctx0);
   await waitText(phones[0], /TAP!/);
   assert((await text(phones[0])).includes('Ravi'), 'same player after reopening');
   // pause

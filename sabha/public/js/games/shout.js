@@ -37,6 +37,7 @@ SabhaGames.shout = {
       text.textContent = view.waiting ? 'Waiting for teammates…' : 'Next one coming…';
     }
     S.instr = i;
+    S.lockUntil = view.lockUntil || 0;
 
     // tiles: rebuilt only when the names change (start, or "Controls changed!" at 2:00)
     const tiles = el.querySelector('.so-tiles');
@@ -89,6 +90,10 @@ SabhaGames.shout = {
   tick(el, api) {
     const S = el._so;
     if (!S) return;
+    const tiles = el.querySelector('.so-tiles');
+    const locked = api.now() < (S.lockUntil || 0);
+    if (tiles && tiles.classList.contains('locked') !== locked) tiles.classList.toggle('locked', locked);
+    if (tiles) tiles.dataset.wait = locked ? `Wrong button! Wait ${Math.ceil((S.lockUntil - api.now()) / 1000)}` : '';
     const fill = el.querySelector('.so-fill');
     const i = S.instr;
     if (!fill) return;
