@@ -1,1 +1,39 @@
-/* shout: game styles (built by the shout session) */
+/* Shout It Out: instruction on top, four big tiles below. Tiles sit in a white frame so every
+   colour reads on both the red and the blue team background. */
+.game-shout { justify-content: flex-start; gap: 0; padding: 0; }
+.so-wrap { flex: 1; width: 100%; display: flex; flex-direction: column; gap: 12px; padding: 12px var(--pad) 18px; position: relative; }
+.so-top { display: flex; justify-content: space-between; align-items: baseline; font-weight: 800; font-size: 20px; }
+.so-clock { font-family: var(--display); font-weight: 400; font-size: 24px; opacity: .9; }
+
+.so-instr { flex: 1 1 0; min-height: 190px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px;
+  background: rgba(0, 0, 0, .22); border-radius: 18px; padding: 16px 14px; text-align: center; }
+.so-kicker { font-weight: 900; letter-spacing: .2em; font-size: 18px; opacity: .9; min-height: 1.2em; }
+.so-text { font-family: var(--display); font-size: clamp(38px, 12vw, 60px); line-height: 1.02; overflow-wrap: anywhere; }
+.so-instr.idle .so-text { font-family: var(--body); font-weight: 800; font-size: 24px; opacity: .85; }
+.so-bar { width: 100%; height: 16px; border-radius: 8px; background: rgba(255, 255, 255, .25); overflow: hidden; }
+.so-fill { display: block; height: 100%; background: #fff; transform-origin: left center; transition: transform .2s linear; }
+.so-fill.low { background: #ffd23f; }
+.so-instr.pop { animation: so-pop .35s ease-out; }
+@keyframes so-pop { from { transform: scale(.94); background: rgba(255, 255, 255, .35); } to { transform: none; } }
+.so-instr.late { animation: so-late .7s ease-out; }
+@keyframes so-late { 0%, 40% { background: var(--bad); } to { background: rgba(0, 0, 0, .22); } }
+
+.so-tiles { flex: 1 1 0; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 10px; min-height: 260px; }
+.so-tile { position: relative; border: 5px solid #fff; border-radius: 18px; background: var(--tile); color: var(--tile-fg);
+  min-height: 112px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 6px;
+  box-shadow: 0 6px 0 rgba(0, 0, 0, .3); font-weight: 900; line-height: 1.05; touch-action: manipulation; }
+.so-tile .w1 { font-size: clamp(15px, 4.6vw, 20px); letter-spacing: .06em; }
+.so-tile .w2 { font-size: clamp(22px, 7vw, 30px); }
+.so-tile[data-colour="white"], .so-tile[data-colour="silver"] { border-color: var(--ink); }
+.so-tile.down { animation: so-down .15s ease-out; }
+@keyframes so-down { 50% { transform: translateY(4px); box-shadow: 0 2px 0 rgba(0, 0, 0, .3); } }
+.so-tile.hit { animation: so-hit .6s ease-out; }
+@keyframes so-hit { 0%, 50% { box-shadow: 0 0 0 8px var(--good), 0 6px 0 rgba(0, 0, 0, .3); border-color: var(--good); } }
+.so-tile.miss { animation: so-miss .6s ease-out; }
+@keyframes so-miss { 0%, 50% { box-shadow: 0 0 0 8px var(--bad), 0 6px 0 rgba(0, 0, 0, .3); border-color: var(--bad); transform: translateX(-4px); } 25% { transform: translateX(4px); } }
+
+.so-banner { position: absolute; inset: 30% 12px auto; z-index: 5; background: #fff; color: var(--ink); border-radius: 18px; padding: 18px; text-align: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .35); display: flex; flex-direction: column; gap: 4px; animation: so-banner .3s ease-out; }
+.so-banner b { font-family: var(--display); font-weight: 400; font-size: 38px; color: var(--team, var(--ink)); }
+.so-banner span { font-weight: 700; font-size: 18px; }
+@keyframes so-banner { from { transform: scale(.8); opacity: 0; } }

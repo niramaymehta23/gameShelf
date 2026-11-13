@@ -83,8 +83,8 @@ function hrender() {
   const keepVal = keep ? document.activeElement.value : null;
   H.key = 'main';
   const body = h('div');
-  happ().replaceChildren(bar(s), handovers(s), warnings(s), body, queue(s));
-  body.append(...[PHASES[s.phase] ? PHASES[s.phase](s) : h('p', { text: s.phase })].flat());
+  happ().replaceChildren(...[bar(s), handovers(s), warnings(s), body, queue(s)].filter(Boolean));
+  body.append(...[PHASES[s.phase] ? PHASES[s.phase](s) : h('p', { text: s.phase })].flat(Infinity).filter(Boolean));
   if (keep) { const el = document.querySelector(`[data-keep="${keep}"]`); if (el) { el.value = keepVal; el.focus(); } }
   if (H.sheet && H.sheetLive) H.sheet();
 }
@@ -107,7 +107,8 @@ function handovers(s) {
 }
 
 function warnings(s) {
-  const recent = s.warnings.filter(w => s.serverNow - w.t < 20000);
+  const seen = new Set();
+  const recent = s.warnings.filter(w => s.serverNow - w.t < 20000).reverse().filter(w => !seen.has(w.text) && seen.add(w.text));
   if (!recent.length) return null;
   return h('div.hsec.hcol', null, recent.map(w => h('div.notice', { text: w.text })));
 }

@@ -266,6 +266,12 @@ function liveScreen(st) {
 function betweenScreen(st) {
   const last = st.last;
   const t = st.me.team;
+  if (last && !last.played && !last.practice) {
+    // turn-based: the other team just played
+    return screen('between', [h('p.kicker', { text: st.game.name }), h('h1', { text: `${TEAM_NAME[other(t)]} has played` }),
+      st.next && (st.next.teams || []).includes(t) ? h('p.big', { text: `${TEAM_NAME[t]}, you're next!` }) : null,
+      h('p.sub', { text: `${TEAM_NAME[t]} so far: ${st.teamTotal || 0}` }), h('p.big', { text: 'Waiting for host' })]);
+  }
   return screen('between', [
     h('p.kicker', { text: st.game.name }),
     last && !last.practice ? h('p.sub', { text: `${TEAM_NAME[t]} so far` }) : null,
@@ -313,7 +319,7 @@ function finalScreen(st) {
   if (f.byTiebreak) kids.push(h('p.sub', { text: 'Level on points: decided by the faster Maths Chain time.' }));
   const list = h('ul.final-list');
   for (const g of f.games) list.append(h('li', null, h('b', { text: g.name }), ' ', g.winner ? `${TEAM_NAME[g.winner]} won` : 'a draw'));
-  if (f.dsi) list.append(h('li', null, h('b', { text: "Don't Say It" }), ' ', f.dsi.winner ? `${TEAM_NAME[f.dsi.winner]} won (${f.dsi.points.red}–${f.dsi.points.blue})` : 'a draw'));
+  if (f.dsi) list.append(h('li', null, h('b', { text: "Don't Say It" }), ' ', f.dsi.winner ? `${TEAM_NAME[f.dsi.winner]} won (Red ${f.dsi.points.red}, Blue ${f.dsi.points.blue})` : 'a draw'));
   kids.push(list);
   const mine = f.mvps.filter(m => m.team === t);
   if (mine.length) {

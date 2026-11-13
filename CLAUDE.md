@@ -280,6 +280,14 @@ Regenerating art: `python3 tools/paint_art.py` (numpy, scipy, Pillow) writes to 
   every phone from the shared seed). See roadmap.
 - Old tables are not cleaned up automatically (the old server pruned after 30 days). They're tiny.
 
+## Sabha Games (`sabha/`)
+
+A separate app in this repo: phone party games for two teams at the Harisena sabha (Pair Hunt, Shout It
+Out, Maths Chain, a Don't Say It counter), run from one host phone. It needs a real server, so it is a
+Node + Socket.IO app with its own `package.json`, tests and docs: see `sabha/README.md` (run, test,
+architecture, game plug-in shape) and `sabha/DECISIONS.md` (every call made where the spec was open).
+Nothing in it touches the Game Shelf or Firebase.
+
 ## Roadmap / ideas Niramay mentioned
 
 0. IPOs and STONKS were taken off the shelf (Oct 2026). All their code, art, docs and tests live on

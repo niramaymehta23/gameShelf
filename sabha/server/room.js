@@ -43,7 +43,8 @@ class Room {
   constructor(code, opts = {}) {
     this.code = code;
     this.hostToken = opts.hostToken || token();
-    this.clock = opts.clock || Date.now;
+    this.clock = opts.clock || Date.now;  // game time source (tests and the bot run speed it up)
+    this.wall = opts.wall || this.clock;  // real time: heartbeats, spam guard, host push throttle
     this.out = opts.transport || nullTransport();
     this.saveFn = opts.save || null;
     this.created = this.clock();
@@ -104,7 +105,7 @@ class Room {
   newPlayer(name, extra = {}) {
     const p = {
       id: uuid(), name: this.uniqueName(name), team: null, seat: null, token: token(),
-      joinedAt: this.clock(), online: true, lastSeen: this.clock(), waiting: false, removed: false, ...extra,
+      joinedAt: this.clock(), online: true, lastSeen: this.wall(), waiting: false, removed: false, ...extra,
     };
     this.players[p.id] = p;
     return p;
@@ -158,7 +159,7 @@ class Room {
   heartbeat(pid) {
     const p = this.players[pid];
     if (!p || p.removed) return;
-    p.lastSeen = this.clock();
+    p.lastSeen = this.wall();
     this.touch();
     if (!p.online) {
       p.online = true;
@@ -184,7 +185,7 @@ class Room {
     if (!p || p.removed || !a || typeof a !== 'object') return;
     this.heartbeat(pid);
     // spam guard: at most 5 game actions a second
-    const t = this.clock();
+    const t = this.wall();
     const rate = (this._rate[pid] = (this._rate[pid] || []).filter(x => t - x < 1000));
     if (rate.length >= MAX_ACTIONS_PER_SEC) return;
     rate.push(t);
@@ -248,7 +249,7 @@ class Room {
     this.current = { game: gameId, opts, rounds, idx: 0, seg: null };
     this.final = null;
     this.phase = 'intro';
-    this.markAll();
+    this.markAll(); this.save();
   }
 
   startSegment() {
@@ -279,6 +280,7 @@ class Room {
     }
     this.phase = 'countdown';
     this.markAll();
+    this.save(); // (the running round is left out of the file, so a restart offers it again)
   }
 
   goLive() {
@@ -341,7 +343,7 @@ class Room {
   tick() {
     const now = this.now();
     for (const p of Object.values(this.players)) {
-      if (p.online && !p.removed && this.clock() - p.lastSeen > HB_OFFLINE_MS) this.setOffline(p);
+      if (p.online && !p.removed && this.wall() - p.lastSeen > HB_OFFLINE_MS) this.setOffline(p);
     }
     const seg = this.current && this.current.seg;
     if (!this.paused()) {
@@ -513,9 +515,9 @@ class Room {
       for (const id of ids) if (this.players[id]) this.out.player(id, 'state', this.playerState(id));
     }
     // the host page rebuilds on every push, so at most ~4 a second (tick flushes what's left)
-    if (this._hostDirty && this.clock() - (this._lastHost || 0) >= 250) {
+    if (this._hostDirty && this.wall() - (this._lastHost || 0) >= 250) {
       this._hostDirty = false;
-      this._lastHost = this.clock();
+      this._lastHost = this.wall();
       this.out.host('state', this.hostState());
     }
   }
@@ -551,7 +553,7 @@ class Room {
       _nextEvent: d.nextEvent || (d.events.length + 1),
     });
     // a restart is not anyone's fault: give everyone a fresh 10 s before they count as offline
-    for (const p of Object.values(r.players)) { p.online = false; p.lastSeen = r.clock(); }
+    for (const p of Object.values(r.players)) { p.online = false; p.lastSeen = r.wall(); }
     if (d.current && GAMES[d.current.game]) {
       r.current = { game: d.current.game, opts: d.current.opts, idx: d.current.idx, rounds: GAMES[d.current.game].rounds(d.current.opts), seg: null };
     }
@@ -658,7 +660,7 @@ const HOST_CMDS = {
     if (cur.idx < 0) cur.idx = 0;
     this.games[cur.game].status = 'playing';
     this.phase = cur.idx === 0 ? 'intro' : 'results';
-    this.markAll();
+    this.markAll(); this.save();
   },
   gameCmd(c) {
     const seg = this.current && this.current.seg;

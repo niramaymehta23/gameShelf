@@ -53,7 +53,6 @@ function setup({ red = 4, blue = 4, lock = true, seed } = {}) {
   let aid = 0;
   Object.assign(t, {
     room, ids, log, all: () => [...ids.red, ...ids.blue],
-    get now() { return now; },
     host: c => { const r = room.hostCmd(c); if (r && r.error) throw new Error('host refused: ' + r.error); return r; },
     hostTry: c => room.hostCmd(c),
     // move the clock forward, ticking like the server does (every 250 ms); heartbeats keep online players online
@@ -80,10 +79,12 @@ function setup({ red = 4, blue = 4, lock = true, seed } = {}) {
       t.advance(3000); // through "Time!"
     },
     lastResult: () => room.segments[room.segments.length - 1],
-    get events() { return room.events; },
     inst: () => room.current && room.current.seg && room.current.seg.inst,
     ctx: () => room.current && room.current.seg && room.current.seg.ctx,
   });
+  // live getters (Object.assign would have read them once)
+  Object.defineProperty(t, 'now', { get: () => now });
+  Object.defineProperty(t, 'events', { get: () => room.events });
   return t;
 }
 

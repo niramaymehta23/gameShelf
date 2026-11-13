@@ -18,6 +18,10 @@ const PUBLIC = path.join(__dirname, '..', 'public');
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const KEEP_MS = 24 * 3600 * 1000;
 const SAVE = process.env.NO_SAVE ? null : true;
+// SABHA_SPEED=10 runs every round ten times faster (bot test only); heartbeats stay on real time
+const SPEED = Number(process.env.SABHA_SPEED) || 1;
+const T0 = Date.now();
+const gameClock = SPEED === 1 ? Date.now : () => T0 + (Date.now() - T0) * SPEED;
 
 const rooms = new Map();
 let io;
@@ -56,7 +60,7 @@ function loadRooms() {
     try {
       const d = JSON.parse(fs.readFileSync(path.join(DATA_DIR, f), 'utf8'));
       if (Date.now() - (d.touched || 0) > KEEP_MS) continue;
-      const room = Room.fromJSON(d, { transport: transport(d.code), save: saveRoom });
+      const room = Room.fromJSON(d, { transport: transport(d.code), save: saveRoom, clock: gameClock, wall: Date.now });
       rooms.set(room.code, room);
       console.log(`reloaded room ${room.code} (${Object.keys(room.players).length} players, phase ${room.phase})`);
     } catch (e) { console.error('could not reload', f, e.message); }
@@ -65,7 +69,7 @@ function loadRooms() {
 
 function createRoom() {
   const code = makeCode(c => rooms.has(c));
-  const room = new Room(code, { transport: transport(code), save: saveRoom });
+  const room = new Room(code, { transport: transport(code), save: saveRoom, clock: gameClock, wall: Date.now });
   rooms.set(code, room);
   room.save();
   return room;
@@ -105,7 +109,7 @@ function wire(socket) {
   const ack = fn => (typeof fn === 'function' ? fn : () => {});
   const roomOf = code => rooms.get(String(code || '').toUpperCase());
 
-  socket.on('ping', (t0, cb) => ack(cb)(Date.now()));
+  socket.on('ping', (t0, cb) => ack(cb)(gameClock()));
 
   socket.on('room:exists', (code, cb) => { const r = roomOf(code); ack(cb)(r ? { ok: true, locked: r.locked } : { ok: false }); });
 
@@ -165,7 +169,7 @@ function wire(socket) {
 }
 
 function start(port = PORT) {
-  loadRooms();
+  if (SPEED === 1) loadRooms();
   const server = http.createServer((req, res) => handle(req, res).catch(e => { console.error(e); res.writeHead(500); res.end(); }));
   io = new Server(server, { pingInterval: 10000, pingTimeout: 20000, cors: { origin: true } });
   io.on('connection', wire);
@@ -173,7 +177,7 @@ function start(port = PORT) {
     const now = Date.now();
     for (const [code, room] of rooms) {
       try { room.tick(); } catch (e) { console.error(`[${code}] tick`, e); }
-      if (now - room.touched > KEEP_MS) rooms.delete(code);
+      if (gameClock() - room.touched > KEEP_MS * SPEED) rooms.delete(code);
     }
   }, 250);
   server.on('close', () => clearInterval(t));

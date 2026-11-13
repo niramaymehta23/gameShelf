@@ -1,1 +1,35 @@
-/* pairhunt: game styles (built by the pairhunt session) */
+/* Pair Hunt: symbol tile, show-my-code button and the code keypad, sized to fit 390×844 without scrolling. */
+.game-pairhunt { justify-content: flex-start; gap: 10px; padding: 10px var(--pad) 16px; }
+.ph-top { width: 100%; max-width: 380px; display: flex; justify-content: space-between; align-items: baseline; font-weight: 900; font-size: 22px; }
+.ph-mine { font-size: 17px; font-weight: 700; opacity: .85; }
+.ph-hunt { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.ph-tile { background: #fff; border-radius: 22px; padding: 12px 14px 10px; width: min(100%, 300px); box-shadow: 0 6px 0 rgba(0, 0, 0, .22); color: var(--ink); }
+.ph-tile.pop { animation: ph-pop .4s cubic-bezier(.34, 1.56, .64, 1); }
+@keyframes ph-pop { from { transform: scale(.6) rotate(-8deg); opacity: 0; } to { transform: none; opacity: 1; } }
+.ph-sym { height: 128px; display: flex; justify-content: center; }
+.ph-svg { height: 100%; width: auto; }
+.ph-name { font-weight: 900; font-size: 25px; letter-spacing: .06em; margin-top: 4px; }
+.ph-trio { font-weight: 800; font-size: 17px; background: rgba(0, 0, 0, .2); padding: 6px 12px; border-radius: 10px; }
+.ph-show { width: 100%; max-width: 380px; min-height: 64px; border-radius: 14px; border: 3px solid rgba(255, 255, 255, .75); background: rgba(0, 0, 0, .14); color: #fff; font-size: 22px; font-weight: 800; }
+.ph-show.on { background: #fff; color: var(--ink); border-color: #fff; }
+.ph-show.on span { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.ph-show small { font-size: 17px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.ph-show b { font-family: var(--display); font-weight: 400; font-size: 46px; letter-spacing: .1em; line-height: 1; }
+.ph-pad { width: 100%; display: flex; justify-content: center; }
+.game-pairhunt .keypad { gap: 6px; }
+.game-pairhunt .kp-value { min-height: 58px; line-height: 58px; }
+.game-pairhunt .kp-lock { min-height: 1.2em; font-size: 18px; }
+.ph-typed { font-size: 22px; font-weight: 800; max-width: 22ch; padding: 18px 0; }
+.ph-msg { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 12px; min-height: 50vh; }
+.ph-msg-big { font-family: var(--display); font-size: clamp(38px, 11vw, 54px); line-height: 1.1; }
+.ph-msg-sub { font-size: 20px; font-weight: 700; opacity: .9; max-width: 24ch; }
+.ph-msg.good .ph-msg-big { animation: ph-pop .4s cubic-bezier(.34, 1.56, .64, 1); }
+@media (max-height: 700px) {
+  .game-pairhunt { gap: 6px; padding-top: 6px; }
+  .ph-sym { height: 72px; }
+  .ph-trio { font-size: 15px; padding: 4px 10px; }
+  .game-pairhunt .kp-value { min-height: 50px; line-height: 50px; font-size: 38px; }
+  .game-pairhunt .kp-label { font-size: 16px; }
+  .ph-name { font-size: 20px; }
+  .ph-tile { padding: 8px 10px 6px; }
+}

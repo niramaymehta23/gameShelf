@@ -9,6 +9,7 @@ module.exports = {
   hostSays: '"Tap the big button as fast as you can. Go!"',
   championship: false,
   normalise: true,
+  bot: () => ({ type: 'tap' }),
   rounds: () => [{ n: 1, label: 'Round 1', ms: 30000 }],
   create(ctx) {
     const taps = {};
