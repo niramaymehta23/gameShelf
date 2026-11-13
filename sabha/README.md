@@ -27,6 +27,10 @@ npm start                 # http://localhost:3100  (host page: /host)
 Environment variables: `PORT` (default 3100), `DATA_DIR` (default `sabha/data`, where each room is
 saved as JSON at the end of every round), `NO_SAVE=1` (keep nothing on disk).
 
+## Putting it online
+
+See [DEPLOY.md](DEPLOY.md): Fly.io, pay-as-you-go, `fly deploy` from this folder (Dockerfile + fly.toml are here).
+
 ## Tests
 
 ```bash
