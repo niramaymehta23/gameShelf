@@ -1,0 +1,22 @@
+{
+  "name": "harisena-sabha-games",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Phone party games for two teams at the Harisena sabha: Pair Hunt, Shout It Out, Maths Chain and the Don't Say It counter.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server/index.js",
+    "check": "for f in server/*.js server/games/*.js public/js/*.js public/js/games/*.js; do node --check \"$f\" || exit 1; done",
+    "test": "node tests/run-unit.mjs && node tests/bots.mjs",
+    "test:unit": "node tests/run-unit.mjs",
+    "test:bots": "node tests/bots.mjs",
+    "test:e2e": "node tests/e2e.mjs"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.1"
+  }
+}
